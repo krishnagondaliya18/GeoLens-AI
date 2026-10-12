@@ -89,7 +89,7 @@ async def init_db() -> bool:
 async def close_db():
     """Close MongoDB connection gracefully."""
     global client, _is_connected
-    if client:
+    if client is not None:
         client.close()
         _is_connected = False
         logger.info("MongoDB client closed.")
@@ -108,7 +108,7 @@ def get_db_status() -> Dict[str, Any]:
 
 async def find_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     clean_email = email.strip().lower()
-    if _is_connected and db:
+    if _is_connected and db is not None:
         user = await db.users.find_one({"email": clean_email})
         return serialize_doc(user)
     # Memory fallback
@@ -119,7 +119,7 @@ async def find_user_by_email(email: str) -> Optional[Dict[str, Any]]:
 
 async def find_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     clean_uname = username.strip().lower()
-    if _is_connected and db:
+    if _is_connected and db is not None:
         user = await db.users.find_one({"username": clean_uname})
         return serialize_doc(user)
     for u in _memory_users.values():
@@ -128,7 +128,7 @@ async def find_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     return None
 
 async def find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    if _is_connected and db:
+    if _is_connected and db is not None:
         try:
             oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
             query = {"_id": oid} if oid else {"_id": user_id}
@@ -152,7 +152,7 @@ async def create_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": now,
     }
     
-    if _is_connected and db:
+    if _is_connected and db is not None:
         result = await db.users.insert_one(user_doc)
         user_doc["_id"] = result.inserted_id
         return serialize_doc(user_doc)
@@ -177,7 +177,7 @@ async def update_user_profile(user_id: str, update_data: Dict[str, Any]) -> Opti
         fields["role"] = update_data["role"].strip()
     fields["updated_at"] = now
     
-    if _is_connected and db:
+    if _is_connected and db is not None:
         try:
             oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
             query = {"_id": oid} if oid else {"_id": user_id}
@@ -212,7 +212,7 @@ async def save_analysis(analysis_data: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": now
     }
     
-    if _is_connected and db:
+    if _is_connected and db is not None:
         res = await db.analyses.insert_one(doc)
         doc["_id"] = res.inserted_id
         return serialize_doc(doc)
@@ -227,7 +227,7 @@ async def save_analysis(analysis_data: Dict[str, Any]) -> Dict[str, Any]:
 
 async def get_user_analyses(user_id: Optional[str] = None, limit: int = 50, skip: int = 0) -> List[Dict[str, Any]]:
     """Retrieve history of analyses for a specific user (or latest public if user_id is None)."""
-    if _is_connected and db:
+    if _is_connected and db is not None:
         query = {"user_id": user_id} if user_id else {}
         cursor = db.analyses.find(query).sort("created_at", -1).skip(skip).limit(limit)
         results = await cursor.to_list(length=limit)
@@ -239,7 +239,7 @@ async def get_user_analyses(user_id: Optional[str] = None, limit: int = 50, skip
 
 async def get_analysis_by_id(analysis_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get single analysis by ID."""
-    if _is_connected and db:
+    if _is_connected and db is not None:
         try:
             oid = ObjectId(analysis_id) if ObjectId.is_valid(analysis_id) else None
             query: Dict[str, Any] = {"_id": oid} if oid else {"_id": analysis_id}
@@ -259,7 +259,7 @@ async def get_analysis_by_id(analysis_id: str, user_id: Optional[str] = None) ->
 
 async def delete_analysis(analysis_id: str, user_id: Optional[str] = None) -> bool:
     """Delete a single analysis record."""
-    if _is_connected and db:
+    if _is_connected and db is not None:
         try:
             oid = ObjectId(analysis_id) if ObjectId.is_valid(analysis_id) else None
             query: Dict[str, Any] = {"_id": oid} if oid else {"_id": analysis_id}
@@ -283,7 +283,7 @@ async def clear_user_history(user_id: str) -> int:
     """Delete all analyses belonging to a specific user."""
     if not user_id:
         return 0
-    if _is_connected and db:
+    if _is_connected and db is not None:
         res = await db.analyses.delete_many({"user_id": user_id})
         return res.deleted_count
         

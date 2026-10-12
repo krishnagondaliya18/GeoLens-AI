@@ -35,15 +35,25 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL, isCompulsory = fal
         })
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Fallback if not JSON
+      }
+
       if (!res.ok) {
-        throw new Error(data.detail || data.message || 'Login failed.');
+        throw new Error(data.detail || data.message || `Login failed (Status: ${res.status})`);
       }
 
       onAuthSuccess(data.user, data.token);
       if (onClose) onClose();
     } catch (err) {
-      setError(err.message || 'Unable to connect to server.');
+      if (err.message === 'Failed to fetch') {
+        setError('Server is connecting or waking up. Please retry in a few seconds.');
+      } else {
+        setError(err.message || 'Unable to connect to server.');
+      }
     } finally {
       setLoading(false);
     }
@@ -76,15 +86,25 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL, isCompulsory = fal
         })
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Fallback if not JSON
+      }
+
       if (!res.ok) {
-        throw new Error(data.detail || data.message || 'Registration failed.');
+        throw new Error(data.detail || data.message || `Registration failed (Status: ${res.status})`);
       }
 
       onAuthSuccess(data.user, data.token);
       if (onClose) onClose();
     } catch (err) {
-      setError(err.message || 'Registration failed.');
+      if (err.message === 'Failed to fetch') {
+        setError('Server is connecting or waking up. Please retry in a few seconds.');
+      } else {
+        setError(err.message || 'Registration failed.');
+      }
     } finally {
       setLoading(false);
     }
