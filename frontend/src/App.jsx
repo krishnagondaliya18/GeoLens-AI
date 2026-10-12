@@ -75,6 +75,8 @@ const Icons = {
   ShieldCheck: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
 };
 
+const DEFAULT_PRODUCTION_API_URL = "https://geolens-ai-lo86.onrender.com";
+
 const getInitialApiUrl = () => {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('geolens_api_url');
@@ -85,7 +87,7 @@ const getInitialApiUrl = () => {
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://localhost:8000';
   }
-  return '';
+  return DEFAULT_PRODUCTION_API_URL;
 };
 
 const DEFAULT_CAPTION_PROMPT = "Provide a concise satellite imagery caption highlighting key geography, activity, and risk cues.";
@@ -1111,22 +1113,7 @@ function App() {
         }} 
       />
 
-      {/* Missing Backend Warning Banner for Production Deployments */}
-      {!apiUrl && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
-        <div className="fixed top-0 left-0 right-0 bg-amber-950/95 border-b border-amber-800/80 px-4 py-2 text-xs text-amber-200 flex items-center justify-between z-50 backdrop-blur-md shadow-lg animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
-            <span><strong>Backend URL Not Connected:</strong> Please connect your Render backend service so GeoLens can process satellite queries.</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowApiModal(true)}
-            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer shrink-0"
-          >
-            Connect Backend URL
-          </button>
-        </div>
-      )}
+
 
       {/* LIGHTBOX FOR HIGH-RES PREVIEWS */}
       {viewImage && (
