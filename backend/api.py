@@ -22,6 +22,14 @@ import re
 import json
 import numpy as np
 import time
+import logging
+from pydantic import BaseModel, Field
+
+# Database & Authentication Modules (MongoDB Atlas)
+import database
+import auth
+
+logger = logging.getLogger("geolens.api")
 
 env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(env_path):
@@ -30,9 +38,19 @@ load_dotenv()
 
 app = FastAPI(
     title="GeoLens API",
-    description="Vision-Language Satellite Imagery Intelligence API powered by Gemini, Hugging Face & Computer Vision",
-    version="2.1.0"
+    description="Vision-Language Satellite Imagery Intelligence API powered by Gemini, Hugging Face, Computer Vision & MongoDB Atlas",
+    version="2.2.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MongoDB Atlas async connection."""
+    await database.init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connection gracefully."""
+    await database.close_db()
 
 # Add CORS middleware
 app.add_middleware(
@@ -42,6 +60,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Configuration
 API_MODE = os.getenv("API_MODE", "gemini").lower()
@@ -1266,9 +1285,24 @@ async def get_config():
         "has_hf_token": bool(os.getenv("HF_TOKEN", "") or HF_TOKEN_ENV)
     }
 
+def make_thumbnail_b64(image_bytes: Optional[bytes], max_size=(160, 160)) -> Optional[str]:
+    """Generate a compact base64 JPEG thumbnail to persist with analysis history."""
+    if not image_bytes:
+        return None
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            img = img.convert("RGB")
+            img.thumbnail(max_size)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=75)
+            return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+    except Exception:
+        return None
+
 @app.post("/handle")
 @app.post("/api/handle")
 async def handle_query(
+    request: Request,
     prompt: str = Form(...),
     context: str = Form(""),
     image: Optional[UploadFile] = File(None),
@@ -1296,6 +1330,23 @@ async def handle_query(
             engine=engine,
             context=context
         )
+
+        # Persist to MongoDB Atlas
+        try:
+            curr_user = await auth.get_current_user_optional(request)
+            user_id = curr_user.get("id") if curr_user else None
+            thumb = make_thumbnail_b64(compressed_image_bytes)
+            await database.save_analysis({
+                "user_id": user_id,
+                "prompt": prompt,
+                "mode": route_type,
+                "model": model or DEFAULT_GEMINI_MODEL,
+                "response_text": result.get("answer", "") or result.get("caption", ""),
+                "bboxes": result.get("boxes", []) or [],
+                "image_meta": {"thumbnail": thumb} if thumb else {}
+            })
+        except Exception as dberr:
+            logger.debug("Failed saving analysis to MongoDB: %s", dberr)
 
         return {
             "routed_to": route_type,
@@ -1399,6 +1450,24 @@ async def handle_query_stream(
                     "image_with_boxes": image_with_boxes
                 }
             }
+
+            # Asynchronously persist to MongoDB Atlas upon stream completion
+            try:
+                curr_user = await auth.get_current_user_optional(request)
+                user_id = curr_user.get("id") if curr_user else None
+                thumb = make_thumbnail_b64(compressed_image_bytes)
+                await database.save_analysis({
+                    "user_id": user_id,
+                    "prompt": prompt,
+                    "mode": actual_route,
+                    "model": model or DEFAULT_GEMINI_MODEL,
+                    "response_text": full_answer,
+                    "bboxes": boxes or [],
+                    "image_meta": {"thumbnail": thumb} if thumb else {}
+                })
+            except Exception as dberr:
+                logger.debug("Failed saving stream analysis to MongoDB: %s", dberr)
+
             yield f"data: {json.dumps(done_payload)}\n\n"
 
         except Exception as stream_err:
@@ -1454,6 +1523,193 @@ async def create_new_session(
             "caption": "Satellite imagery stream online.",
             "thinking": str(exc)
         }
+
+# ---------------------------------------------------------------------------
+# MongoDB Atlas Database, Authentication & Profile Endpoints
+# ---------------------------------------------------------------------------
+
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    full_name: Optional[str] = ""
+    bio: Optional[str] = ""
+    role: Optional[str] = "Geospatial Analyst"
+
+class LoginRequest(BaseModel):
+    username_or_email: str
+    password: str
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    role: Optional[str] = None
+
+@app.get("/api/db/status")
+async def get_database_status():
+    """Retrieve MongoDB Atlas connection status and storage mode."""
+    return database.get_db_status()
+
+@app.post("/api/auth/register")
+async def register_account(req: RegisterRequest):
+    """Register a new user account and return JWT access token."""
+    email_clean = req.email.strip().lower()
+    username_clean = req.username.strip().lower()
+
+    if not email_clean or "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+    if len(username_clean) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+
+    # Check for existing email or username
+    existing_email = await database.find_user_by_email(email_clean)
+    if existing_email:
+        raise HTTPException(status_code=400, detail="An account with this email address already exists.")
+
+    existing_user = await database.find_user_by_username(username_clean)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username is already taken. Please choose another.")
+
+    # Hash password & create user
+    hashed = auth.hash_password(req.password)
+    user_doc = await database.create_user({
+        "email": email_clean,
+        "username": username_clean,
+        "password_hash": hashed,
+        "full_name": req.full_name or username_clean.capitalize(),
+        "bio": req.bio or "Satellite Imagery & Geospatial Intelligence Explorer",
+        "role": req.role or "Geospatial Analyst"
+    })
+
+    # Generate JWT token
+    token = auth.create_access_token({
+        "sub": str(user_doc["id"]),
+        "email": user_doc["email"],
+        "username": user_doc["username"]
+    })
+
+    sanitized = {k: v for k, v in user_doc.items() if k != "password_hash"}
+    return {
+        "success": True,
+        "message": "Account registered successfully",
+        "user": sanitized,
+        "token": token,
+        "token_type": "bearer"
+    }
+
+@app.post("/api/auth/login")
+async def login_account(req: LoginRequest):
+    """Authenticate with username/email and password, returning JWT access token."""
+    ident = req.username_or_email.strip().lower()
+    if not ident or not req.password:
+        raise HTTPException(status_code=400, detail="Username/email and password are required.")
+
+    user = None
+    if "@" in ident:
+        user = await database.find_user_by_email(ident)
+    else:
+        user = await database.find_user_by_username(ident)
+        if not user:
+            user = await database.find_user_by_email(ident)
+
+    if not user or not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid username/email or password.")
+
+    if not auth.verify_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid username/email or password.")
+
+    # Generate token
+    token = auth.create_access_token({
+        "sub": str(user["id"]),
+        "email": user["email"],
+        "username": user["username"]
+    })
+
+    sanitized = {k: v for k, v in user.items() if k != "password_hash"}
+    return {
+        "success": True,
+        "message": "Signed in successfully",
+        "user": sanitized,
+        "token": token,
+        "token_type": "bearer"
+    }
+
+@app.get("/api/auth/me")
+async def get_current_user_profile(request: Request):
+    """Retrieve currently authenticated user profile."""
+    user = await auth.get_current_user_required(request)
+    return {
+        "success": True,
+        "user": user
+    }
+
+@app.put("/api/auth/profile")
+async def update_profile(req: ProfileUpdateRequest, request: Request):
+    """Update profile details (name, bio, role) for currently logged-in user."""
+    user = await auth.get_current_user_required(request)
+    update_data = req.model_dump(exclude_unset=True)
+    updated = await database.update_user_profile(user["id"], update_data)
+    if not updated:
+        raise HTTPException(status_code=400, detail="Failed to update profile.")
+    updated.pop("password_hash", None)
+    return {
+        "success": True,
+        "message": "Profile updated successfully",
+        "user": updated
+    }
+
+# ---------------------------------------------------------------------------
+# Satellite Analysis History Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/history")
+async def get_analysis_history(request: Request, limit: int = 50, skip: int = 0):
+    """Retrieve saved satellite image analysis history."""
+    user = await auth.get_current_user_optional(request)
+    user_id = user["id"] if user else None
+    analyses = await database.get_user_analyses(user_id=user_id, limit=limit, skip=skip)
+    return {
+        "success": True,
+        "count": len(analyses),
+        "analyses": analyses
+    }
+
+@app.get("/api/history/{analysis_id}")
+async def get_analysis_detail(analysis_id: str, request: Request):
+    """Retrieve full analysis report by ID."""
+    user = await auth.get_current_user_optional(request)
+    user_id = user["id"] if user else None
+    analysis = await database.get_analysis_by_id(analysis_id, user_id=user_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis record not found.")
+    return {
+        "success": True,
+        "analysis": analysis
+    }
+
+@app.delete("/api/history/{analysis_id}")
+async def delete_analysis_record(analysis_id: str, request: Request):
+    """Delete an analysis record."""
+    user = await auth.get_current_user_required(request)
+    deleted = await database.delete_analysis(analysis_id, user_id=user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Analysis record not found or not owned by user.")
+    return {
+        "success": True,
+        "message": "Analysis deleted successfully."
+    }
+
+@app.delete("/api/history")
+async def clear_all_history(request: Request):
+    """Clear all analysis records for the authenticated user."""
+    user = await auth.get_current_user_required(request)
+    count = await database.clear_user_history(user["id"])
+    return {
+        "success": True,
+        "message": f"Cleared {count} historical analyses."
+    }
 
 # ---------------------------------------------------------------------------
 # Dedicated Hugging Face Model Endpoints (Qwen3-VL, Grounding DINO, SAM 3, CLIP)

@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import AuthModal from './AuthModal';
+import ProfileModal from './ProfileModal';
+import HistoryModal from './HistoryModal';
 
 // ============================================================================
 // ASSETS & MONOCHROME ICONS
@@ -63,7 +66,12 @@ const Icons = {
   Stop: () => <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>,
   Eye: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
   EyeOff: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg>,
-  Sparkles: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.286L13 21l-2.286-6.857L5 12l5.714-2.286L13 3z" /></svg>
+  Sparkles: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.286L13 21l-2.286-6.857L5 12l5.714-2.286L13 3z" /></svg>,
+  User: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+  Database: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>,
+  LogOut: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
+  History: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  ShieldCheck: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
 };
 
 const API_URL = import.meta.env.VITE_API_URL || (
@@ -179,6 +187,92 @@ function App() {
   const [enableClip, setEnableClip] = useState(() => localStorage.getItem('geolens_enable_clip') === 'true');
   const [showMatrixModal, setShowMatrixModal] = useState(false);
   const [verificationMatrix, setVerificationMatrix] = useState(null);
+
+  // MongoDB Atlas Database & Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const u = localStorage.getItem('geolens_user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('geolens_token') || '');
+  const [dbStatus, setDbStatus] = useState({ connected: false, mode: 'checking' });
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  useEffect(() => {
+    // Check MongoDB Atlas status
+    const checkDb = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/db/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setDbStatus(data);
+        }
+      } catch (err) {
+        setDbStatus({ connected: false, mode: 'offline' });
+      }
+    };
+    checkDb();
+
+    // Verify current user profile if token exists
+    const verifyUser = async () => {
+      const token = localStorage.getItem('geolens_token');
+      if (token) {
+        try {
+          const res = await fetch(`${API_URL}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.user) {
+              setCurrentUser(data.user);
+              localStorage.setItem('geolens_user', JSON.stringify(data.user));
+            }
+          } else if (res.status === 401) {
+            handleLogout();
+          }
+        } catch {
+          // Keep cached user if offline
+        }
+      }
+    };
+    verifyUser();
+  }, [API_URL]);
+
+  const handleAuthSuccess = (user, token) => {
+    setCurrentUser(user);
+    setAuthToken(token);
+    localStorage.setItem('geolens_user', JSON.stringify(user));
+    localStorage.setItem('geolens_token', token);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setAuthToken('');
+    localStorage.removeItem('geolens_user');
+    localStorage.removeItem('geolens_token');
+    setShowUserDropdown(false);
+  };
+
+  const handleLoadAnalysis = (analysis) => {
+    if (!analysis) return;
+    const thumb = analysis.image_meta?.thumbnail;
+    setCurrentSession(prev => ({
+      ...prev,
+      title: analysis.prompt ? analysis.prompt.slice(0, 32) : prev.title,
+      imageUrl: thumb || prev.imageUrl,
+      messages: [
+        ...prev.messages,
+        { role: 'user', text: analysis.prompt || 'Satellite Scene Analysis' },
+        { role: 'assistant', text: analysis.response_text || 'Analysis completed.' }
+      ]
+    }));
+  };
 
   // 2. Initialize Current Session with stable ID
   const createNewSession = () => ({
@@ -506,8 +600,15 @@ function App() {
         if (gemM) formData.append('model', gemM);
       }
 
+      const streamHeaders = {};
+      const token = authToken || localStorage.getItem('geolens_token');
+      if (token) {
+        streamHeaders['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(`${API_URL}/handle-stream`, {
         method: 'POST',
+        headers: streamHeaders,
         body: formData,
         signal: controller.signal
       });
@@ -1116,7 +1217,7 @@ function App() {
         {/* Header with Dimensions and Controls */}
         <div className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 z-10 shrink-0">
           
-          {/* USER SPECIFIED: PRESERVED INPUT DIMENSIONS IN MIDDLE / HEADER */}
+          {/* USER SPECIFIED: PRESERVED INPUT DIMENSIONS & MONGODB STATUS */}
           <div className="flex items-center gap-3">
             <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5 font-mono">
               <Icons.Dimensions />
@@ -1125,9 +1226,20 @@ function App() {
             <div className="font-mono text-xs text-zinc-200 font-semibold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
               {currentSession.imageUrl ? `${currentSession.imageDims.w} x ${currentSession.imageDims.h} px` : "NO DATA"}
             </div>
+
+            {/* MongoDB Atlas Status Badge */}
+            <button 
+              type="button"
+              onClick={() => setShowHistoryModal(true)}
+              className="text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+              title={dbStatus.connected ? "MongoDB Atlas Active - Click to view Cloud History" : "Database Connected - Click to view Cloud History"}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+              <span>{dbStatus.connected ? 'Atlas Cloud' : 'DB Sync'}</span>
+            </button>
           </div>
            
-          {/* TOOLBAR CONTROLS */}
+          {/* TOOLBAR CONTROLS & USER AUTH */}
           <div className="flex items-center gap-2.5">
             {currentSession.imageUrl && (
               <>
@@ -1193,6 +1305,81 @@ function App() {
                   )}
                 </div>
               </>
+            )}
+
+            <div className="h-4 w-[1px] bg-zinc-800"></div>
+
+            {/* User Authentication & Profile Menu */}
+            {!currentUser ? (
+              <button
+                type="button"
+                onClick={() => setShowAuthModal(true)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs px-3 py-1.5 rounded-lg border border-zinc-700 flex items-center gap-1.5 font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <Icons.User />
+                <span>Sign In</span>
+              </button>
+            ) : (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowUserDropdown(!showUserDropdown)}
+                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-2.5 py-1 rounded-lg border border-zinc-800 flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                >
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center text-[10px] font-bold text-white font-mono">
+                    {(currentUser.full_name || currentUser.username || 'U')[0].toUpperCase()}
+                  </div>
+                  <span className="max-w-[100px] truncate font-medium">
+                    {currentUser.full_name || currentUser.username}
+                  </span>
+                  <Icons.ChevronDown />
+                </button>
+
+                {showUserDropdown && (
+                  <div 
+                    className="absolute right-0 top-full mt-1.5 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden py-1 z-50 text-xs animate-fadeIn"
+                    onClick={() => setShowUserDropdown(false)}
+                  >
+                    <div className="px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/40">
+                      <p className="font-semibold text-zinc-200 truncate">
+                        {currentUser.full_name || currentUser.username}
+                      </p>
+                      <p className="text-[10px] text-zinc-400 font-mono truncate">
+                        {currentUser.role || 'Geospatial Analyst'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => { setShowUserDropdown(false); setShowProfileModal(true); }}
+                      className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Icons.User />
+                      <span>My Profile</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setShowUserDropdown(false); setShowHistoryModal(true); }}
+                      className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Icons.History />
+                      <span>Cloud History</span>
+                    </button>
+
+                    <div className="h-[1px] bg-zinc-800 my-1"></div>
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-full text-left px-3 py-2 hover:bg-red-950/40 text-red-400 hover:text-red-300 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Icons.LogOut />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -1559,6 +1746,37 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* MongoDB Atlas Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+        API_URL={API_URL}
+      />
+
+      {/* Analyst Profile Modal */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={currentUser}
+        onUpdateUser={(updated) => {
+          setCurrentUser(updated);
+          localStorage.setItem('geolens_user', JSON.stringify(updated));
+        }}
+        onLogout={handleLogout}
+        API_URL={API_URL}
+        authToken={authToken}
+      />
+
+      {/* MongoDB Atlas Satellite Analysis History Modal */}
+      <HistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        API_URL={API_URL}
+        authToken={authToken}
+        onLoadAnalysis={handleLoadAnalysis}
+      />
     </div>
   );
 }
