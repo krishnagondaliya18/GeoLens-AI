@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import AuthModal from './AuthModal';
 import ProfileModal from './ProfileModal';
 import HistoryModal from './HistoryModal';
+import ApiConfigModal from './ApiConfigModal';
 
 // ============================================================================
 // ASSETS & MONOCHROME ICONS
@@ -74,27 +75,41 @@ const Icons = {
   ShieldCheck: () => <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
 };
 
-const API_URL = import.meta.env.VITE_API_URL || (
-  typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? 'http://localhost:8000'
-    : ''
-); 
+const getInitialApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('geolens_api_url');
+    if (custom) return custom.replace(/\/+$/, '');
+  }
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:8000';
+  }
+  return '';
+};
+
 const DEFAULT_CAPTION_PROMPT = "Provide a concise satellite imagery caption highlighting key geography, activity, and risk cues.";
 
 const extractErrorMessage = async (response) => {
-  if (!response) return 'Satellite telemetry processed.';
+  if (!response) return 'No response received from server.';
+  if (response.status === 404 || response.status === 405) {
+    return 'Backend API not connected. Please click "Connect Backend URL" to set your Render service URL.';
+  }
   try {
     const raw = await response.text();
-    if (!raw) return 'Satellite telemetry processed.';
+    if (!raw) return `Server returned status ${response.status}`;
+    if (raw.includes('<!DOCTYPE html>') || raw.includes('<html')) {
+      return 'Received HTML page instead of API response. Please configure your Render Backend URL.';
+    }
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed === 'string') return parsed;
-      return parsed.detail || parsed.message || parsed.error || 'Satellite telemetry processed.';
+      return parsed.detail || parsed.message || parsed.error || `Error (${response.status})`;
     } catch {
-      return raw.trim() || 'Satellite telemetry processed.';
+      return raw.trim() || `Error (${response.status})`;
     }
   } catch {
-    return 'Satellite telemetry processed.';
+    return `Server returned status ${response.status}`;
   }
 };
 
@@ -203,12 +218,21 @@ function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [apiUrl, setApiUrl] = useState(getInitialApiUrl);
+  const [showApiModal, setShowApiModal] = useState(false);
+
+  const handleSaveApiUrl = (newUrl) => {
+    setApiUrl(newUrl);
+    localStorage.setItem('geolens_api_url', newUrl);
+  };
 
   useEffect(() => {
+    if (!apiUrl) return;
+
     // Check MongoDB Atlas status
     const checkDb = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/db/status`);
+        const res = await fetch(`${apiUrl}/api/db/status`);
         if (res.ok) {
           const data = await res.json();
           setDbStatus(data);
@@ -224,7 +248,7 @@ function App() {
       const token = localStorage.getItem('geolens_token');
       if (token) {
         try {
-          const res = await fetch(`${API_URL}/api/auth/me`, {
+          const res = await fetch(`${apiUrl}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.ok) {
@@ -242,7 +266,7 @@ function App() {
       }
     };
     verifyUser();
-  }, [API_URL]);
+  }, [apiUrl]);
 
   const handleAuthSuccess = (user, token) => {
     setCurrentUser(user);
@@ -361,13 +385,15 @@ function App() {
     }
     document.title = "GeoLens | Satellite Vision AI";
 
-    fetch(`${API_URL}/api/hf/verification`)
-      .then(res => res.json())
-      .then(data => {
-        if (data?.models) setVerificationMatrix(data.models);
-      })
-      .catch(() => {});
-  }, []);
+    if (apiUrl) {
+      fetch(`${apiUrl}/api/hf/verification`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.models) setVerificationMatrix(data.models);
+        })
+        .catch(() => {});
+    }
+  }, [apiUrl]);
 
   // Sync helper: keeps current session persistent and updates history list in-place
   const syncSessionToHistory = (updatedSession) => {
@@ -606,7 +632,11 @@ function App() {
         streamHeaders['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${API_URL}/handle-stream`, {
+      if (!apiUrl) {
+        throw new Error("Backend API not connected. Please click 'Connect Backend URL' to set your Render service URL.");
+      }
+
+      const response = await fetch(`${apiUrl}/handle-stream`, {
         method: 'POST',
         headers: streamHeaders,
         body: formData,
@@ -1081,6 +1111,23 @@ function App() {
         }} 
       />
 
+      {/* Missing Backend Warning Banner for Production Deployments */}
+      {!apiUrl && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+        <div className="fixed top-0 left-0 right-0 bg-amber-950/95 border-b border-amber-800/80 px-4 py-2 text-xs text-amber-200 flex items-center justify-between z-50 backdrop-blur-md shadow-lg animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+            <span><strong>Backend URL Not Connected:</strong> Please connect your Render backend service so GeoLens can process satellite queries.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowApiModal(true)}
+            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer shrink-0"
+          >
+            Connect Backend URL
+          </button>
+        </div>
+      )}
+
       {/* LIGHTBOX FOR HIGH-RES PREVIEWS */}
       {viewImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-8" onClick={() => setViewImage(null)}>
@@ -1236,6 +1283,17 @@ function App() {
             >
               <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
               <span>{dbStatus.connected ? 'Atlas Cloud' : 'DB Sync'}</span>
+            </button>
+
+            {/* Backend Connection URL Button */}
+            <button
+              type="button"
+              onClick={() => setShowApiModal(true)}
+              className="text-[11px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              title={apiUrl ? `Connected to: ${apiUrl}` : "Click to connect your Render Backend URL"}
+            >
+              <Icons.Settings />
+              <span>{apiUrl ? 'Backend URL' : 'Connect Backend'}</span>
             </button>
           </div>
            
@@ -1752,7 +1810,7 @@ function App() {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={handleAuthSuccess}
-        API_URL={API_URL}
+        API_URL={apiUrl}
       />
 
       {/* Analyst Profile Modal */}
@@ -1765,7 +1823,7 @@ function App() {
           localStorage.setItem('geolens_user', JSON.stringify(updated));
         }}
         onLogout={handleLogout}
-        API_URL={API_URL}
+        API_URL={apiUrl}
         authToken={authToken}
       />
 
@@ -1773,9 +1831,17 @@ function App() {
       <HistoryModal
         isOpen={showHistoryModal}
         onClose={() => setShowHistoryModal(false)}
-        API_URL={API_URL}
+        API_URL={apiUrl}
         authToken={authToken}
         onLoadAnalysis={handleLoadAnalysis}
+      />
+
+      {/* Backend API Configuration Modal */}
+      <ApiConfigModal
+        isOpen={showApiModal}
+        onClose={() => setShowApiModal(false)}
+        currentApiUrl={apiUrl}
+        onSaveApiUrl={handleSaveApiUrl}
       />
     </div>
   );
