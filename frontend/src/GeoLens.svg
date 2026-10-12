@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="lensGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="50%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Shield -->
+  <rect width="100" height="100" rx="22" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2" />
+  
+  <!-- Outer Orbit Ring -->
+  <circle cx="50" cy="50" r="36" stroke="#0EA5E9" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.4" />
+  
+  <!-- Elliptical Orbital Path -->
+  <ellipse cx="50" cy="50" rx="40" ry="18" transform="rotate(-30 50 50)" stroke="url(#lensGrad)" stroke-width="1.8" opacity="0.75" />
+  
+  <!-- Orbiting Satellite Node -->
+  <circle cx="78" cy="34" r="3" fill="#10B981" filter="url(#glow)" />
+  <circle cx="78" cy="34" r="1.5" fill="#FFFFFF" />
+
+  <!-- Targeting Reticle Brackets -->
+  <path d="M 30 24 L 24 24 L 24 30" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 70 24 L 76 24 L 76 30" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 24 70 L 24 76 L 30 76" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 76 70 L 76 76 L 70 76" stroke="#38BDF8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Center Optical Lens Elements -->
+  <circle cx="50" cy="50" r="22" stroke="url(#lensGrad)" stroke-width="2.5" />
+  <circle cx="50" cy="50" r="15" fill="#0EA5E9" fill-opacity="0.15" stroke="#38BDF8" stroke-width="1.5" />
+  <circle cx="50" cy="50" r="7" fill="url(#lensGrad)" filter="url(#glow)" />
+  <circle cx="50" cy="50" r="3.5" fill="#FFFFFF" />
+
+  <!-- Reticle Crosshairs -->
+  <line x1="50" y1="18" x2="50" y2="24" stroke="#38BDF8" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="50" y1="76" x2="50" y2="82" stroke="#38BDF8" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="18" y1="50" x2="24" y2="50" stroke="#38BDF8" stroke-width="1.8" stroke-linecap="round" />
+  <line x1="76" y1="50" x2="82" y2="50" stroke="#38BDF8" stroke-width="1.8" stroke-linecap="round" />
+</svg>
