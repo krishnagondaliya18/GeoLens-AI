@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm';
 import AuthModal from './AuthModal';
 import ProfileModal from './ProfileModal';
 import HistoryModal from './HistoryModal';
-import ApiConfigModal from './ApiConfigModal';
 
 // ============================================================================
 // ASSETS & MONOCHROME ICONS
@@ -95,13 +94,13 @@ const DEFAULT_CAPTION_PROMPT = "Provide a concise satellite imagery caption high
 const extractErrorMessage = async (response) => {
   if (!response) return 'No response received from server.';
   if (response.status === 404 || response.status === 405) {
-    return 'Backend API not connected. Please click "Connect Backend URL" to set your Render service URL.';
+    return 'Backend service is starting up or temporarily unavailable. Please retry in a moment.';
   }
   try {
     const raw = await response.text();
     if (!raw) return `Server returned status ${response.status}`;
     if (raw.includes('<!DOCTYPE html>') || raw.includes('<html')) {
-      return 'Received HTML page instead of API response. Please configure your Render Backend URL.';
+      return 'Backend service is starting up or temporarily unavailable. Please retry in a moment.';
     }
     try {
       const parsed = JSON.parse(raw);
@@ -220,13 +219,7 @@ function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [apiUrl, setApiUrl] = useState(getInitialApiUrl);
-  const [showApiModal, setShowApiModal] = useState(false);
-
-  const handleSaveApiUrl = (newUrl) => {
-    setApiUrl(newUrl);
-    localStorage.setItem('geolens_api_url', newUrl);
-  };
+  const [apiUrl] = useState(getInitialApiUrl);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -635,7 +628,7 @@ function App() {
       }
 
       if (!apiUrl) {
-        throw new Error("Backend API not connected. Please click 'Connect Backend URL' to set your Render service URL.");
+        throw new Error("Backend connection is initializing or unavailable. Please try again.");
       }
 
       const response = await fetch(`${apiUrl}/handle-stream`, {
@@ -1251,7 +1244,7 @@ function App() {
         {/* Header with Dimensions and Controls */}
         <div className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 z-10 shrink-0">
           
-          {/* USER SPECIFIED: PRESERVED INPUT DIMENSIONS & MONGODB STATUS */}
+          {/* PRESERVED INPUT DIMENSIONS & CLOUD SYNC STATUS */}
           <div className="flex items-center gap-3">
             <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5 font-mono">
               <Icons.Dimensions />
@@ -1261,26 +1254,15 @@ function App() {
               {currentSession.imageUrl ? `${currentSession.imageDims.w} x ${currentSession.imageDims.h} px` : "NO DATA"}
             </div>
 
-            {/* MongoDB Atlas Status Badge */}
+            {/* Cloud Sync Status Badge */}
             <button 
               type="button"
               onClick={() => setShowHistoryModal(true)}
               className="text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-              title={dbStatus.connected ? "MongoDB Atlas Active - Click to view Cloud History" : "Database Connected - Click to view Cloud History"}
+              title="Saved Satellite Analyses"
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-              <span>{dbStatus.connected ? 'Atlas Cloud' : 'DB Sync'}</span>
-            </button>
-
-            {/* Backend Connection URL Button */}
-            <button
-              type="button"
-              onClick={() => setShowApiModal(true)}
-              className="text-[11px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-              title={apiUrl ? `Connected to: ${apiUrl}` : "Click to connect your Render Backend URL"}
-            >
-              <Icons.Settings />
-              <span>{apiUrl ? 'Backend URL' : 'Connect Backend'}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+              <span>Cloud Sync</span>
             </button>
           </div>
            
@@ -1477,10 +1459,10 @@ function App() {
                 </div>
                 <h3 className="text-sm font-semibold text-zinc-200 mb-1">Upload Satellite Imagery</h3>
                 <p className="text-xs text-zinc-400 text-center max-w-xs mb-3">
-                  Drag and drop, paste from clipboard, or click to browse
+                  Drag and drop files photos 
                 </p>
                 <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800">
-                  PNG · JPG · WebP · GeoTIFF
+                  PNG · JPG
                 </span>
               </div>
             )}
@@ -1792,10 +1774,13 @@ function App() {
         </div>
       </div>
 
-      {/* MongoDB Atlas Authentication Modal */}
+      {/* Compulsory Authentication Modal */}
       <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
+        isOpen={!currentUser || showAuthModal}
+        onClose={() => {
+          if (currentUser) setShowAuthModal(false);
+        }}
+        isCompulsory={!currentUser}
         onAuthSuccess={handleAuthSuccess}
         API_URL={apiUrl}
       />
@@ -1814,21 +1799,13 @@ function App() {
         authToken={authToken}
       />
 
-      {/* MongoDB Atlas Satellite Analysis History Modal */}
+      {/* Satellite Analysis History Modal */}
       <HistoryModal
         isOpen={showHistoryModal}
         onClose={() => setShowHistoryModal(false)}
         API_URL={apiUrl}
         authToken={authToken}
         onLoadAnalysis={handleLoadAnalysis}
-      />
-
-      {/* Backend API Configuration Modal */}
-      <ApiConfigModal
-        isOpen={showApiModal}
-        onClose={() => setShowApiModal(false)}
-        currentApiUrl={apiUrl}
-        onSaveApiUrl={handleSaveApiUrl}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
+const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL, isCompulsory = false }) => {
   const [tab, setTab] = useState('login'); // 'login' | 'register'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -12,7 +12,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('Geospatial Analyst');
+  const [role, setRole] = useState('');
 
   if (!isOpen) return null;
 
@@ -41,7 +41,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
       }
 
       onAuthSuccess(data.user, data.token);
-      onClose();
+      if (onClose) onClose();
     } catch (err) {
       setError(err.message || 'Unable to connect to server.');
     } finally {
@@ -72,7 +72,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
           username: username.trim(),
           password: password,
           full_name: fullName.trim(),
-          role: role
+          role: role.trim() || 'Geospatial Analyst'
         })
       });
 
@@ -82,7 +82,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
       }
 
       onAuthSuccess(data.user, data.token);
-      onClose();
+      if (onClose) onClose();
     } catch (err) {
       setError(err.message || 'Registration failed.');
     } finally {
@@ -91,7 +91,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div 
         className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -109,18 +109,20 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
                 {tab === 'login' ? 'Sign In to GeoLens' : 'Create GeoLens Account'}
               </h3>
               <p className="text-[11px] text-zinc-400">
-                {tab === 'login' ? 'Sync your analyses across sessions & devices' : 'Persistent satellite intelligence powered by MongoDB Atlas'}
+                {tab === 'login' ? 'Sign in to access satellite vision intelligence' : 'Create your account to start satellite analysis'}
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          {!isCompulsory && (
+            <button 
+              onClick={onClose}
+              className="text-zinc-500 hover:text-zinc-300 p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Tab Switcher */}
@@ -269,18 +271,13 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
                 <label className="block text-[10px] font-medium text-zinc-400 mb-1 uppercase tracking-wider font-mono">
                   Role / Specialization
                 </label>
-                <select
+                <input
+                  type="text"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500"
-                >
-                  <option value="Geospatial Analyst">Geospatial Analyst</option>
-                  <option value="Remote Sensing Researcher">Remote Sensing Researcher</option>
-                  <option value="Earth Observation Scientist">Earth Observation Scientist</option>
-                  <option value="Defense & Intelligence Analyst">Defense & Intelligence Analyst</option>
-                  <option value="GIS Specialist">GIS Specialist</option>
-                  <option value="Academic / Student">Academic / Student</option>
-                </select>
+                  placeholder="e.g. Geologist, Student, Lead Scientist, GIS Analyst"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+                />
               </div>
 
               <div>
@@ -321,7 +318,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
                     Creating Account...
                   </span>
                 ) : (
-                  <span>Register & Connect</span>
+                  <span>Register & Continue</span>
                 )}
               </button>
             </form>
@@ -330,7 +327,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL }) => {
           {/* Database Notice */}
           <div className="mt-5 pt-3 border-t border-zinc-800/80 flex items-center justify-center gap-1.5 text-[10px] text-zinc-500 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>MongoDB Atlas Secured Encryption</span>
+            <span>Secure Cloud Session</span>
           </div>
         </div>
       </div>

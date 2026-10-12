@@ -133,10 +133,10 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
                 </p>
               </div>
               <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
-                <span>Database Sync:</span>
+                <span>Account Status:</span>
                 <span className="flex items-center gap-1.5 text-emerald-400">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  MongoDB Atlas
+                  Active & Synced
                 </span>
               </div>
             </div>
@@ -153,18 +153,13 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
               </div>
               <div>
                 <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">Role / Specialization</label>
-                <select
+                <input
+                  type="text"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
+                  placeholder="e.g. Geologist, Student, Lead Scientist, GIS Analyst"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500"
-                >
-                  <option value="Geospatial Analyst">Geospatial Analyst</option>
-                  <option value="Remote Sensing Researcher">Remote Sensing Researcher</option>
-                  <option value="Earth Observation Scientist">Earth Observation Scientist</option>
-                  <option value="Defense & Intelligence Analyst">Defense & Intelligence Analyst</option>
-                  <option value="GIS Specialist">GIS Specialist</option>
-                  <option value="Academic / Student">Academic / Student</option>
-                </select>
+                />
               </div>
               <div>
                 <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">Biography / Research Focus</label>

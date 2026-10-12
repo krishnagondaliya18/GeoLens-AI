@@ -112,7 +112,7 @@ const HistoryModal = ({ isOpen, onClose, API_URL, authToken, onLoadAnalysis }) =
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-zinc-100">Satellite Analysis History</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950/70 text-emerald-400 border border-emerald-800/60">
-                  MongoDB Atlas Cloud
+                  Cloud Synced
                 </span>
               </div>
               <p className="text-[11px] text-zinc-400">
@@ -167,7 +167,7 @@ const HistoryModal = ({ isOpen, onClose, API_URL, authToken, onLoadAnalysis }) =
             {loading ? (
               <div className="py-12 flex flex-col items-center justify-center text-zinc-500 text-xs gap-2">
                 <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></div>
-                <span>Fetching records from MongoDB Atlas...</span>
+                <span>Loading saved analyses...</span>
               </div>
             ) : filteredAnalyses.length === 0 ? (
               <div className="py-16 text-center text-zinc-500 text-xs">
