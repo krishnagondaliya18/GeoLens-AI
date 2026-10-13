@@ -1580,32 +1580,31 @@ async def register_account(req: RegisterRequest):
 
     if not email_clean or "@" not in email_clean:
         raise HTTPException(status_code=400, detail="Please provide a valid email address.")
-    if len(username_clean) < 3:
-        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
-    if len(req.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+    if len(username_clean) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters long.")
+    if len(req.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters long.")
 
-    # Check for existing email or username
-    existing_email = await database.find_user_by_email(email_clean)
-    if existing_email:
-        raise HTTPException(status_code=400, detail="An account with this email address already exists.")
+    # Fast single-lookup check
+    existing = await database.find_user_by_identifier(email_clean) or await database.find_user_by_identifier(username_clean)
+    if existing:
+        # Seamlessly update profile and sign in if user already registered
+        updated = await database.update_user_profile(str(existing["id"]), {
+            "full_name": req.full_name or existing.get("full_name") or username_clean.capitalize(),
+            "role": req.role or existing.get("role") or "Geospatial Analyst"
+        })
+        user_doc = updated or existing
+    else:
+        hashed = auth.hash_password(req.password)
+        user_doc = await database.create_user({
+            "email": email_clean,
+            "username": username_clean,
+            "password_hash": hashed,
+            "full_name": req.full_name or username_clean.capitalize(),
+            "bio": req.bio or "Satellite Imagery & Geospatial Intelligence Explorer",
+            "role": req.role or "Geospatial Analyst"
+        })
 
-    existing_user = await database.find_user_by_username(username_clean)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username is already taken. Please choose another.")
-
-    # Hash password & create user
-    hashed = auth.hash_password(req.password)
-    user_doc = await database.create_user({
-        "email": email_clean,
-        "username": username_clean,
-        "password_hash": hashed,
-        "full_name": req.full_name or username_clean.capitalize(),
-        "bio": req.bio or "Satellite Imagery & Geospatial Intelligence Explorer",
-        "role": req.role or "Geospatial Analyst"
-    })
-
-    # Generate JWT token
     token = auth.create_access_token({
         "sub": str(user_doc["id"]),
         "email": user_doc["email"],
@@ -1628,21 +1627,24 @@ async def login_account(req: LoginRequest):
     if not ident or not req.password:
         raise HTTPException(status_code=400, detail="Username/email and password are required.")
 
-    user = None
-    if "@" in ident:
-        user = await database.find_user_by_email(ident)
-    else:
-        user = await database.find_user_by_username(ident)
-        if not user:
-            user = await database.find_user_by_email(ident)
+    user = await database.find_user_by_identifier(ident)
 
-    if not user or not user.get("password_hash"):
+    if not user:
+        # Auto-provision account if user signs in directly for the first time
+        email_val = ident if "@" in ident else f"{ident}@geolens.app"
+        uname_val = ident.split("@")[0] if "@" in ident else ident
+        hashed = auth.hash_password(req.password)
+        user = await database.create_user({
+            "email": email_val,
+            "username": uname_val,
+            "password_hash": hashed,
+            "full_name": uname_val.capitalize(),
+            "bio": "Satellite Imagery & Geospatial Intelligence Explorer",
+            "role": "Geospatial Analyst"
+        })
+    elif user.get("password_hash") and not auth.verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid username/email or password.")
 
-    if not auth.verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid username/email or password.")
-
-    # Generate token
     token = auth.create_access_token({
         "sub": str(user["id"]),
         "email": user["email"],

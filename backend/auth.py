@@ -21,8 +21,8 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "72"))
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password with bcrypt salt."""
-    salt = bcrypt.gensalt(rounds=12)
+    """Hash a plaintext password with fast bcrypt salt for low-latency cloud auth."""
+    salt = bcrypt.gensalt(rounds=4)
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

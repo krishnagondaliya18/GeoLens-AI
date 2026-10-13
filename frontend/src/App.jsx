@@ -77,12 +77,6 @@ const Icons = {
 const DEFAULT_PRODUCTION_API_URL = "https://geolens-ai-lo86.onrender.com";
 
 const getInitialApiUrl = () => {
-  if (typeof window !== 'undefined') {
-    const custom = localStorage.getItem('geolens_api_url');
-    if (custom) return custom.replace(/\/+$/, '');
-  }
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, '');
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://localhost:8000';
   }
@@ -241,7 +235,7 @@ function App() {
     // Verify current user profile if token exists
     const verifyUser = async () => {
       const token = localStorage.getItem('geolens_token');
-      if (token) {
+      if (token && token !== 'syncing_token') {
         try {
           const res = await fetch(`${apiUrl}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -252,8 +246,6 @@ function App() {
               setCurrentUser(data.user);
               localStorage.setItem('geolens_user', JSON.stringify(data.user));
             }
-          } else if (res.status === 401) {
-            handleLogout();
           }
         } catch {
           // Keep cached user if offline

@@ -106,34 +106,51 @@ def get_db_status() -> Dict[str, Any]:
 
 # ----------------- User Queries -----------------
 
+def _cache_user(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if doc and "id" in doc:
+        _memory_users[str(doc["id"])] = doc
+    return doc
+
+async def find_user_by_identifier(ident: str) -> Optional[Dict[str, Any]]:
+    """Find user by username OR email in a single fast lookup."""
+    clean = ident.strip().lower()
+    for u in _memory_users.values():
+        if u.get("username", "").lower() == clean or u.get("email", "").lower() == clean:
+            return u
+    if _is_connected and db is not None:
+        user = await db.users.find_one({"$or": [{"username": clean}, {"email": clean}]})
+        return _cache_user(serialize_doc(user))
+    return None
+
 async def find_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     clean_email = email.strip().lower()
-    if _is_connected and db is not None:
-        user = await db.users.find_one({"email": clean_email})
-        return serialize_doc(user)
-    # Memory fallback
     for u in _memory_users.values():
         if u.get("email") == clean_email:
             return u
+    if _is_connected and db is not None:
+        user = await db.users.find_one({"email": clean_email})
+        return _cache_user(serialize_doc(user))
     return None
 
 async def find_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     clean_uname = username.strip().lower()
-    if _is_connected and db is not None:
-        user = await db.users.find_one({"username": clean_uname})
-        return serialize_doc(user)
     for u in _memory_users.values():
         if u.get("username", "").lower() == clean_uname:
             return u
+    if _is_connected and db is not None:
+        user = await db.users.find_one({"username": clean_uname})
+        return _cache_user(serialize_doc(user))
     return None
 
 async def find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    if str(user_id) in _memory_users:
+        return _memory_users[str(user_id)]
     if _is_connected and db is not None:
         try:
             oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
             query = {"_id": oid} if oid else {"_id": user_id}
             user = await db.users.find_one(query)
-            return serialize_doc(user)
+            return _cache_user(serialize_doc(user))
         except Exception as e:
             logger.error("Error finding user by ID: %s", e)
             return None
@@ -147,15 +164,21 @@ async def create_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
         "password_hash": user_data["password_hash"],
         "full_name": user_data.get("full_name", "").strip(),
         "bio": user_data.get("bio", ""),
-        "role": user_data.get("role", "researcher"),
+        "role": user_data.get("role", "Geospatial Analyst"),
         "created_at": now,
         "updated_at": now,
     }
     
     if _is_connected and db is not None:
-        result = await db.users.insert_one(user_doc)
-        user_doc["_id"] = result.inserted_id
-        return serialize_doc(user_doc)
+        try:
+            result = await db.users.insert_one(user_doc)
+            user_doc["_id"] = result.inserted_id
+            return _cache_user(serialize_doc(user_doc))
+        except Exception as e:
+            logger.warning("MongoDB insert fallback: %s", e)
+            existing = await find_user_by_identifier(user_doc["username"]) or await find_user_by_identifier(user_doc["email"])
+            if existing:
+                return existing
     
     # In-memory fallback
     uid = f"usr_{len(_memory_users) + 1}_{int(now.timestamp())}"
@@ -169,31 +192,30 @@ async def create_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
 async def update_user_profile(user_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     now = datetime.now(timezone.utc)
     fields = {}
-    if "full_name" in update_data:
+    if "full_name" in update_data and update_data["full_name"] is not None:
         fields["full_name"] = update_data["full_name"].strip()
-    if "bio" in update_data:
+    if "bio" in update_data and update_data["bio"] is not None:
         fields["bio"] = update_data["bio"].strip()
-    if "role" in update_data:
+    if "role" in update_data and update_data["role"] is not None:
         fields["role"] = update_data["role"].strip()
     fields["updated_at"] = now
     
+    if str(user_id) in _memory_users:
+        _memory_users[str(user_id)].update(fields)
+        _memory_users[str(user_id)]["updated_at"] = now.isoformat()
+
     if _is_connected and db is not None:
         try:
             oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else None
             query = {"_id": oid} if oid else {"_id": user_id}
             await db.users.update_one(query, {"$set": fields})
             updated = await db.users.find_one(query)
-            return serialize_doc(updated)
+            if updated:
+                return _cache_user(serialize_doc(updated))
         except Exception as e:
             logger.error("Error updating user profile: %s", e)
-            return None
             
-    # In-memory
-    if user_id in _memory_users:
-        _memory_users[user_id].update(fields)
-        _memory_users[user_id]["updated_at"] = now.isoformat()
-        return _memory_users[user_id]
-    return None
+    return _memory_users.get(str(user_id))
 
 # ----------------- Satellite Analysis History -----------------
 

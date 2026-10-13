@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, authToken }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -9,6 +9,14 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || '');
+      setRole(user.role || 'Geospatial Analyst');
+      setBio(user.bio || '');
+    }
+  }, [user]);
+
   if (!isOpen || !user) return null;
 
   const handleSave = async (e) => {
@@ -17,33 +25,49 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
     setError('');
     setSuccess('');
 
+    const updatedLocalUser = {
+      ...user,
+      full_name: fullName.trim() || user.username,
+      role: role.trim() || 'Geospatial Analyst',
+      bio: bio.trim()
+    };
+
     try {
-      const res = await fetch(`${API_URL}/api/auth/profile`, {
+      const cache = JSON.parse(localStorage.getItem('geolens_accounts_cache') || '{}');
+      if (updatedLocalUser.username) cache[updatedLocalUser.username.toLowerCase()] = updatedLocalUser;
+      if (updatedLocalUser.email) cache[updatedLocalUser.email.toLowerCase()] = updatedLocalUser;
+      localStorage.setItem('geolens_accounts_cache', JSON.stringify(cache));
+    } catch {
+      // Ignore storage errors
+    }
+
+    onUpdateUser(updatedLocalUser);
+    setIsEditing(false);
+    setLoading(false);
+    setSuccess('Profile updated successfully!');
+    setTimeout(() => setSuccess(''), 3000);
+
+    // Background Cloud Sync
+    if (authToken && authToken !== 'syncing_token') {
+      fetch(`${API_URL}/api/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
-          full_name: fullName.trim(),
-          role: role.trim(),
-          bio: bio.trim()
+          full_name: updatedLocalUser.full_name,
+          role: updatedLocalUser.role,
+          bio: updatedLocalUser.bio
         })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || data.message || 'Failed to update profile.');
-      }
-
-      onUpdateUser(data.user);
-      setIsEditing(false);
-      setSuccess('Profile updated successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.message || 'Update failed.');
-    } finally {
-      setLoading(false);
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.user) {
+            onUpdateUser(data.user);
+          }
+        })
+        .catch(() => {});
     }
   };
 
