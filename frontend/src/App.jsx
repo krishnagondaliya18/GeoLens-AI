@@ -355,6 +355,8 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [chatPanelWidth, setChatPanelWidth] = useState(DEFAULT_CHAT_WIDTH); 
   const [repoPanelHeight, setRepoPanelHeight] = useState(DEFAULT_REPO_HEIGHT); 
+  const [mobileImageVh, setMobileImageVh] = useState(44);
+  const [isGalleryCollapsed, setIsGalleryCollapsed] = useState(false);
   
   const fileInputRef = useRef(null);
   const chatInputRef = useRef(null);
@@ -367,6 +369,7 @@ function App() {
   const isResizingChat = useRef(false);
   const isResizingRepo = useRef(false);
   const isResizingSidebar = useRef(false);
+  const isResizingMobileSplit = useRef(false);
 
   // --- BROWSER FAVICON & TITLE LOGIC ---
   useEffect(() => {
@@ -438,19 +441,27 @@ function App() {
   const startResizeChat = useCallback(() => { isResizingChat.current = true; }, []);
   const startResizeRepo = useCallback(() => { isResizingRepo.current = true; }, []);
   const startResizeSidebar = useCallback(() => { isResizingSidebar.current = true; }, []);
+  const startResizeMobileSplit = useCallback(() => { isResizingMobileSplit.current = true; }, []);
 
   const handleResize = useCallback((e) => {
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     if (isResizingChat.current) {
-        const newWidth = window.innerWidth - e.clientX;
+        const newWidth = window.innerWidth - clientX;
         if (newWidth > 280 && newWidth < 800) setChatPanelWidth(newWidth);
     }
     if (isResizingRepo.current) {
-        const newHeight = window.innerHeight - e.clientY;
+        const newHeight = window.innerHeight - clientY;
         if (newHeight > 60 && newHeight < window.innerHeight * 0.6) setRepoPanelHeight(newHeight);
     }
     if (isResizingSidebar.current) {
-        const newWidth = e.clientX;
+        const newWidth = clientX;
         if (newWidth > 180 && newWidth < 450) setSidebarWidth(newWidth);
+    }
+    if (isResizingMobileSplit.current) {
+        const pct = Math.round((clientY / window.innerHeight) * 100);
+        if (pct >= 18 && pct <= 80) setMobileImageVh(pct);
     }
   }, []);
 
@@ -458,14 +469,19 @@ function App() {
     isResizingChat.current = false;
     isResizingRepo.current = false;
     isResizingSidebar.current = false;
+    isResizingMobileSplit.current = false;
   }, []);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleResize);
     window.addEventListener('mouseup', stopResize);
+    window.addEventListener('touchmove', handleResize, { passive: true });
+    window.addEventListener('touchend', stopResize);
     return () => {
       window.removeEventListener('mousemove', handleResize);
       window.removeEventListener('mouseup', stopResize);
+      window.removeEventListener('touchmove', handleResize);
+      window.removeEventListener('touchend', stopResize);
     };
   }, [handleResize, stopResize]);
 
@@ -1088,6 +1104,51 @@ function App() {
     }
   };
 
+  const handleRemoveMainImage = () => {
+    setIsCropping(false);
+    setSelection(null);
+    handleResetTransform();
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    const updatedSession = {
+      ...currentSession,
+      imageUrl: null,
+      imageDims: { w: 0, h: 0 },
+      groundedImages: [],
+      activeLabel: null,
+    };
+    setCurrentSession(updatedSession);
+    syncSessionToHistory(updatedSession);
+  };
+
+  const handleRemoveGalleryImage = (e, imgId) => {
+    e.stopPropagation();
+    const currentList = currentSession.groundedImages || [];
+    const targetImg = currentList.find((item) => item.id === imgId);
+    const remaining = currentList.filter((item) => item.id !== imgId);
+
+    if (remaining.length === 0) {
+      handleRemoveMainImage();
+      return;
+    }
+
+    let nextImageUrl = currentSession.imageUrl;
+    let nextLabel = currentSession.activeLabel;
+    if (targetImg && currentSession.imageUrl === targetImg.url) {
+      const fallback = remaining[remaining.length - 1];
+      nextImageUrl = fallback.url;
+      nextLabel = fallback.label;
+    }
+
+    const updatedSession = {
+      ...currentSession,
+      imageUrl: nextImageUrl,
+      activeLabel: nextLabel,
+      groundedImages: remaining,
+    };
+    setCurrentSession(updatedSession);
+    syncSessionToHistory(updatedSession);
+  };
+
   const isBusy = isLoading || isStreaming;
   const isTransforming = transform.rotate !== 0 || transform.flipX !== 1;
 
@@ -1219,6 +1280,97 @@ function App() {
                 )}
               </div>
             </div>
+
+            {/* ChatGPT-Style Bottom Profile Account Section */}
+            <div className="mt-auto p-2.5 border-t border-zinc-800/80 bg-zinc-950 relative">
+              {!currentUser ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isMobile) setMobileDrawerOpen(false);
+                    setShowAuthModal(true);
+                  }}
+                  className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-100 text-xs px-3 py-2.5 rounded-xl border border-zinc-800 flex items-center gap-2.5 font-medium transition-all shadow-sm cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
+                    <Icons.User />
+                  </div>
+                  <div className="flex flex-col text-left overflow-hidden">
+                    <span className="text-xs font-semibold text-zinc-100 truncate">Sign In</span>
+                    <span className="text-[10px] text-zinc-400 truncate">Access your workspace</span>
+                  </div>
+                </button>
+              ) : (
+                <div className="relative">
+                  {showUserDropdown && (
+                    <div 
+                      className="absolute left-0 right-0 bottom-full mb-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden py-1 z-50 text-xs animate-fadeIn"
+                      onClick={() => setShowUserDropdown(false)}
+                    >
+                      <div className="px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/50">
+                        <p className="font-semibold text-zinc-100 truncate">
+                          {currentUser.full_name || currentUser.username}
+                        </p>
+                        <p className="text-[10px] text-zinc-400 font-mono truncate">
+                          {currentUser.role || 'Geospatial Analyst'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          if (isMobile) setMobileDrawerOpen(false);
+                          setShowProfileModal(true);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Icons.User />
+                        <span>My Profile</span>
+                      </button>
+
+                      <div className="h-[1px] bg-zinc-800 my-1"></div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          if (isMobile) setMobileDrawerOpen(false);
+                          handleLogout();
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-red-950/40 text-red-400 hover:text-red-300 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Icons.LogOut />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className="w-full hover:bg-zinc-900 text-zinc-200 px-2.5 py-2 rounded-xl flex items-center justify-between gap-2.5 transition-all cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center text-xs font-bold text-white font-mono shrink-0 border border-zinc-600/50">
+                        {(currentUser.full_name || currentUser.username || 'U')[0].toUpperCase()}
+                      </div>
+                      <div className="flex flex-col text-left min-w-0">
+                        <span className="text-xs font-semibold text-zinc-100 truncate">
+                          {currentUser.full_name || currentUser.username}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-mono truncate">
+                          {currentUser.role || 'Geospatial Analyst'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-zinc-400 group-hover:text-zinc-200 shrink-0">
+                      <Icons.ChevronUp />
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           /* Collapsed View (Desktop) */
@@ -1231,20 +1383,79 @@ function App() {
               <Icons.Plus />
             </button>
             <div className="w-6 h-[1px] bg-zinc-800 my-1"></div>
-            {sessions.slice(0, 8).map((session, i) => (
-              <div 
-                key={session.id || i} 
-                onClick={() => loadHistorySession(session)} 
-                className={`w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-xs font-mono transition-colors ${
-                  currentSession.id === session.id 
-                    ? 'bg-zinc-800 text-white font-bold border border-zinc-700' 
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                }`} 
-                title={session.title}
-              >
-                {i + 1}
-              </div>
-            ))}
+            <div className="flex-1 flex flex-col items-center gap-2 overflow-y-auto w-full">
+              {sessions.slice(0, 8).map((session, i) => (
+                <div 
+                  key={session.id || i} 
+                  onClick={() => loadHistorySession(session)} 
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer text-xs font-mono transition-colors ${
+                    currentSession.id === session.id 
+                      ? 'bg-zinc-800 text-white font-bold border border-zinc-700' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`} 
+                  title={session.title}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+
+            {/* Collapsed Sidebar Bottom Profile Avatar */}
+            <div className="mt-auto pt-3 border-t border-zinc-800/80 w-full flex justify-center relative">
+              {!currentUser ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(true)}
+                  className="w-9 h-9 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 flex items-center justify-center text-zinc-200 cursor-pointer"
+                  title="Sign In"
+                >
+                  <Icons.User />
+                </button>
+              ) : (
+                <>
+                  {showUserDropdown && (
+                    <div 
+                      className="absolute left-16 bottom-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden py-1 z-50 text-xs animate-fadeIn"
+                      onClick={() => setShowUserDropdown(false)}
+                    >
+                      <div className="px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/50">
+                        <p className="font-semibold text-zinc-100 truncate">
+                          {currentUser.full_name || currentUser.username}
+                        </p>
+                        <p className="text-[10px] text-zinc-400 font-mono truncate">
+                          {currentUser.role || 'Geospatial Analyst'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setShowUserDropdown(false); setShowProfileModal(true); }}
+                        className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Icons.User />
+                        <span>My Profile</span>
+                      </button>
+                      <div className="h-[1px] bg-zinc-800 my-1"></div>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="w-full text-left px-3 py-2 hover:bg-red-950/40 text-red-400 hover:text-red-300 flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Icons.LogOut />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowUserDropdown(!showUserDropdown)}
+                    className="w-9 h-9 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center text-xs font-bold text-white font-mono border border-zinc-600/50 cursor-pointer hover:ring-2 hover:ring-zinc-600 transition-all"
+                    title={currentUser.full_name || currentUser.username}
+                  >
+                    {(currentUser.full_name || currentUser.username || 'U')[0].toUpperCase()}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
         
@@ -1257,7 +1468,10 @@ function App() {
       </div>
 
       {/* 2. CENTER IMAGE WORKSPACE */}
-      <div className={`${isMobile ? 'w-full h-[42dvh] shrink-0 border-b border-zinc-800/80' : 'flex-1'} flex flex-col relative bg-zinc-950 overflow-hidden`}>
+      <div 
+        style={isMobile ? { height: `${mobileImageVh}dvh` } : undefined}
+        className={`${isMobile ? 'w-full shrink-0' : 'flex-1'} flex flex-col relative bg-zinc-950 overflow-hidden`}
+      >
         {/* Header with Dimensions and Controls */}
         <div className="min-h-12 md:h-14 py-1.5 md:py-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 px-3 md:px-6 z-20 shrink-0">
           
@@ -1282,7 +1496,7 @@ function App() {
             </div>
           </div>
             
-          {/* TOOLBAR CONTROLS & USER AUTH */}
+          {/* TOOLBAR CONTROLS */}
           <div className="flex items-center gap-1.5 md:gap-2.5 ml-auto">
             {currentSession.imageUrl && (
               <>
@@ -1344,76 +1558,18 @@ function App() {
                       <button onClick={handleResetTransform} className="text-[10px] font-mono hover:text-white px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors ml-0.5" title="Reset View">
                         Reset
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveMainImage}
+                        className="text-zinc-400 hover:text-red-400 p-1 rounded hover:bg-zinc-800 transition-colors ml-0.5"
+                        title="Remove Photo"
+                      >
+                        <Icons.Trash />
+                      </button>
                     </>
                   )}
                 </div>
               </>
-            )}
-
-            <div className="h-4 w-[1px] bg-zinc-800"></div>
-
-            {/* User Authentication & Profile Menu */}
-            {!currentUser ? (
-              <button
-                type="button"
-                onClick={() => setShowAuthModal(true)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg border border-zinc-700 flex items-center gap-1.5 font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
-              >
-                <Icons.User />
-                <span>Sign In</span>
-              </button>
-            ) : (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowUserDropdown(!showUserDropdown)}
-                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-2 md:px-2.5 py-1 rounded-lg border border-zinc-800 flex items-center gap-1.5 md:gap-2 transition-all cursor-pointer shadow-sm"
-                >
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center text-[10px] font-bold text-white font-mono">
-                    {(currentUser.full_name || currentUser.username || 'U')[0].toUpperCase()}
-                  </div>
-                  <span className="max-w-[72px] md:max-w-[100px] truncate font-medium">
-                    {currentUser.full_name || currentUser.username}
-                  </span>
-                  <Icons.ChevronDown />
-                </button>
-
-                {showUserDropdown && (
-                  <div 
-                    className="absolute right-0 top-full mt-1.5 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden py-1 z-50 text-xs animate-fadeIn"
-                    onClick={() => setShowUserDropdown(false)}
-                  >
-                    <div className="px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/40">
-                      <p className="font-semibold text-zinc-200 truncate">
-                        {currentUser.full_name || currentUser.username}
-                      </p>
-                      <p className="text-[10px] text-zinc-400 font-mono truncate">
-                        {currentUser.role || 'Geospatial Analyst'}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => { setShowUserDropdown(false); setShowProfileModal(true); }}
-                      className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <Icons.User />
-                      <span>My Profile</span>
-                    </button>
-
-                    <div className="h-[1px] bg-zinc-800 my-1"></div>
-
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="w-full text-left px-3 py-2 hover:bg-red-950/40 text-red-400 hover:text-red-300 flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <Icons.LogOut />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                )}
-              </div>
             )}
           </div>
         </div>
@@ -1422,17 +1578,17 @@ function App() {
         <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
           {/* Main Image Stage */}
           <div 
-            className="flex-1 flex items-center justify-center p-3 md:p-8 relative overflow-hidden bg-zinc-950 min-h-0" 
+            className="flex-1 flex items-center justify-center p-2 md:p-6 relative overflow-hidden bg-zinc-950 min-h-0" 
             onMouseDown={handleMouseDown} 
             onMouseMove={handleMouseMove} 
             onMouseUp={handleMouseUp} 
             onMouseLeave={handleMouseUp}
           >
             {currentSession.imageUrl ? (
-              <div className="relative group flex items-center justify-center max-w-full max-h-full" ref={containerRef}>
+              <div className="relative group flex items-center justify-center max-w-full max-h-full h-full w-full" ref={containerRef}>
                 <div 
                   style={{ transform: isCropping ? 'none' : `rotate(${transform.rotate}deg) scale(${transform.scale}) scaleX(${transform.flipX})` }} 
-                  className="transition-transform duration-200 flex items-center justify-center"
+                  className="transition-transform duration-200 flex items-center justify-center max-h-full max-w-full"
                 >
                   <img 
                     src={currentSession.imageUrl} 
@@ -1440,7 +1596,17 @@ function App() {
                     crossOrigin="anonymous" 
                     alt="Satellite imagery" 
                     onLoad={(e) => setCurrentSession(prev => ({...prev, imageDims: { w: e.target.naturalWidth, h: e.target.naturalHeight }}))} 
-                    className="max-h-[28dvh] md:max-h-[66vh] max-w-full w-auto h-auto object-contain rounded-lg shadow-xl select-none pointer-events-none border border-zinc-800" 
+                    style={
+                      isMobile
+                        ? {
+                            maxHeight: `${Math.max(
+                              14,
+                              mobileImageVh - (currentSession.groundedImages?.length > 0 && !isGalleryCollapsed ? 19 : 9)
+                            )}dvh`
+                          }
+                        : undefined
+                    }
+                    className="md:max-h-[66vh] max-w-full w-auto h-auto object-contain rounded-lg shadow-xl select-none pointer-events-none border border-zinc-800" 
                   />
                 </div>
                 {isCropping && selection && (
@@ -1478,7 +1644,7 @@ function App() {
           {/* Bottom Image Gallery */}
           {currentSession.imageUrl && currentSession.groundedImages && currentSession.groundedImages.length > 0 && (
             <>
-              {!isMobile && (
+              {!isMobile && !isGalleryCollapsed && (
                 <div 
                   onMouseDown={startResizeRepo}
                   className="h-3 bg-zinc-950 border-t border-b border-zinc-800 cursor-row-resize flex items-center justify-center hover:bg-zinc-800 transition-colors z-30 group"
@@ -1487,38 +1653,107 @@ function App() {
                 </div>
               )}
               
-              <div style={{ height: isMobile ? 105 : repoPanelHeight }} className="bg-zinc-950 flex flex-col z-20 shrink-0 border-t border-zinc-800">
-                <div className="px-3 md:px-5 py-1.5 md:py-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 shrink-0">
+              <div 
+                style={{ height: isGalleryCollapsed ? 'auto' : (isMobile ? 96 : repoPanelHeight) }} 
+                className="bg-zinc-950 flex flex-col z-20 shrink-0 border-t border-zinc-800 transition-all duration-200"
+              >
+                <div 
+                  onClick={() => setIsGalleryCollapsed(!isGalleryCollapsed)}
+                  className="px-3 md:px-5 py-1.5 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 shrink-0 cursor-pointer hover:bg-zinc-900 transition-colors"
+                >
                   <div className="flex items-center gap-2 text-[11px] md:text-xs font-semibold text-zinc-300">
                     <Icons.Satellite />
                     <span>Image Gallery & Model Outputs</span>
                   </div>
-                  <span className="text-[10px] font-mono text-zinc-400">
-                    {currentSession.groundedImages.length} versions
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {currentSession.groundedImages.length} {currentSession.groundedImages.length === 1 ? 'photo' : 'photos'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsGalleryCollapsed(!isGalleryCollapsed);
+                      }}
+                      className="p-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                      title={isGalleryCollapsed ? "Expand Gallery" : "Collapse Gallery"}
+                    >
+                      {isGalleryCollapsed ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
+                    </button>
+                  </div>
                 </div>
                 
-                <div className="flex-1 p-2 md:p-3 overflow-x-auto md:overflow-y-auto flex flex-nowrap md:flex-wrap content-start gap-2.5 md:gap-3 custom-scrollbar">
-                  {currentSession.groundedImages.map((img) => (
-                    <div 
-                      key={img.id} 
-                      onClick={() => handleRepoClick(img)} 
-                      className="w-20 md:w-32 shrink-0 aspect-square flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden group cursor-pointer transition-all duration-200 hover:border-zinc-600 hover:-translate-y-0.5"
-                    >
-                      <div className="flex-1 relative overflow-hidden bg-black/40">
-                        <img src={img.url} className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity" alt=""/>
+                {!isGalleryCollapsed && (
+                  <div className="flex-1 p-2 md:p-3 overflow-x-auto md:overflow-y-auto flex flex-nowrap md:flex-wrap content-start gap-2.5 md:gap-3 custom-scrollbar">
+                    {currentSession.groundedImages.map((img) => (
+                      <div 
+                        key={img.id} 
+                        onClick={() => handleRepoClick(img)} 
+                        className="relative w-16 md:w-28 shrink-0 aspect-square flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden group cursor-pointer transition-all duration-200 hover:border-zinc-600"
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleRemoveGalleryImage(e, img.id)}
+                          className="absolute top-1 right-1 z-20 w-5 h-5 rounded-full bg-black/80 hover:bg-red-600 text-zinc-200 hover:text-white border border-zinc-700 flex items-center justify-center transition-colors shadow-md"
+                          title="Remove photo"
+                        >
+                          <Icons.Cancel />
+                        </button>
+                        <div className="flex-1 relative overflow-hidden bg-black/40">
+                          <img src={img.url} className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity" alt=""/>
+                        </div>
+                        <div className="p-1 shrink-0 bg-zinc-950 border-t border-zinc-800">
+                          <div className="text-[8px] md:text-[9px] font-mono font-semibold truncate text-zinc-200">{img.label}</div>
+                        </div>
                       </div>
-                      <div className="p-1 md:p-1.5 shrink-0 bg-zinc-950 border-t border-zinc-800">
-                        <div className="text-[8px] md:text-[9px] font-mono font-semibold truncate text-zinc-200">{img.label}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* Interactive Up-Down Split Bar Between Image and Chat (Mobile Only) */}
+      {isMobile && (
+        <div
+          onTouchStart={startResizeMobileSplit}
+          onMouseDown={startResizeMobileSplit}
+          className="h-7 bg-zinc-900 border-y border-zinc-800 flex items-center justify-between px-3 z-30 shrink-0 select-none touch-none cursor-row-resize"
+        >
+          <span className="text-[10px] font-mono text-zinc-400">
+            View Split
+          </span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-10 h-1 rounded-full bg-zinc-600"></div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileImageVh((prev) => Math.max(20, prev - 14));
+              }}
+              className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-0.5 text-[10px] font-mono"
+              title="Move Up (More Chat)"
+            >
+              <Icons.ChevronUp />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileImageVh((prev) => Math.min(76, prev + 14));
+              }}
+              className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-0.5 text-[10px] font-mono"
+              title="Move Down (Larger Photo)"
+            >
+              <Icons.ChevronDown />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Resize Handle for Chat Panel (Desktop Only) */}
       {!isMobile && (
