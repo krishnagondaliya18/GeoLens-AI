@@ -210,9 +210,20 @@ function App() {
   const [dbStatus, setDbStatus] = useState({ connected: false, mode: 'checking' });
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [apiUrl] = useState(getInitialApiUrl);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setMobileDrawerOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -1081,7 +1092,7 @@ function App() {
   const isTransforming = transform.rotate !== 0 || transform.flipX !== 1;
 
   return (
-    <div className="flex h-screen w-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-zinc-700 selection:text-white">
+    <div className="flex flex-col md:flex-row h-[100dvh] w-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-zinc-700 selection:text-white">
       
       {/* Global Hidden File Input */}
       <input 
@@ -1097,11 +1108,9 @@ function App() {
         }} 
       />
 
-
-
       {/* LIGHTBOX FOR HIGH-RES PREVIEWS */}
       {viewImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-8" onClick={() => setViewImage(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 md:p-8" onClick={() => setViewImage(null)}>
           <div className="relative max-w-5xl max-h-full bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-2 flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center px-4 py-2 border-b border-zinc-800 bg-zinc-950 rounded-t-lg">
               <div className="flex items-center gap-2">
@@ -1112,41 +1121,56 @@ function App() {
                 <Icons.Close />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+            <div className="flex-1 overflow-auto p-2 md:p-4 flex items-center justify-center">
               <img src={viewImage.url} alt="Grounded View" className="max-w-full max-h-[80vh] object-contain rounded-lg border border-zinc-800" />
             </div>
           </div>
         </div>
       )}
 
-      {/* 1. LEFT SIDEBAR */}
+      {/* MOBILE DRAWER BACKDROP */}
+      {isMobile && mobileDrawerOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden" 
+          onClick={() => setMobileDrawerOpen(false)} 
+        />
+      )}
+
+      {/* 1. LEFT SIDEBAR (Slide-over Drawer on Mobile, Collapsible Column on Desktop) */}
       <div 
-        style={{ width: isSidebarCollapsed ? 72 : sidebarWidth }} 
-        className="bg-zinc-950 border-r border-zinc-800/80 flex flex-col z-20 transition-all duration-200 relative shrink-0"
+        style={{ width: isMobile ? 270 : (isSidebarCollapsed ? 72 : sidebarWidth) }} 
+        className={`bg-zinc-950 border-r border-zinc-800/80 flex flex-col transition-all duration-200 shrink-0 ${
+          isMobile 
+            ? `fixed inset-y-0 left-0 z-50 shadow-2xl transform ${mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'}` 
+            : 'relative z-20'
+        }`}
       >
         {/* Top Header */}
-        <div className={`h-14 px-4 border-b border-zinc-800/80 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-          <div onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="cursor-pointer transition-opacity hover:opacity-85">
-            <GeoLensLogo collapsed={isSidebarCollapsed} />
+        <div className={`h-14 px-4 border-b border-zinc-800/80 flex items-center ${(!isMobile && isSidebarCollapsed) ? 'justify-center' : 'justify-between'}`}>
+          <div onClick={() => isMobile ? setMobileDrawerOpen(false) : setIsSidebarCollapsed(!isSidebarCollapsed)} className="cursor-pointer transition-opacity hover:opacity-85">
+            <GeoLensLogo collapsed={!isMobile && isSidebarCollapsed} />
           </div>
           
-          <div className={`flex items-center gap-1 ${isSidebarCollapsed ? 'hidden' : ''}`}>
+          <div className={`flex items-center gap-1 ${(!isMobile && isSidebarCollapsed) ? 'hidden' : ''}`}>
             <button 
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+              onClick={() => isMobile ? setMobileDrawerOpen(false) : setIsSidebarCollapsed(!isSidebarCollapsed)} 
               className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-zinc-900"
-              title="Collapse Sidebar"
+              title="Toggle Sidebar"
             >
-              <Icons.Menu />
+              {isMobile ? <Icons.Close /> : <Icons.Menu />}
             </button>
           </div>
         </div>
 
-        {!isSidebarCollapsed ? (
+        {(isMobile || !isSidebarCollapsed) ? (
           <>
             {/* New Analysis Action */}
             <div className="p-3">
               <button 
-                onClick={handleNewSession} 
+                onClick={() => {
+                  handleNewSession();
+                  if (isMobile) setMobileDrawerOpen(false);
+                }} 
                 className="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]"
               >
                 <Icons.Plus />
@@ -1170,19 +1194,22 @@ function App() {
                   sessions.map((session, i) => (
                     <div 
                       key={session.id || i} 
-                      onClick={() => loadHistorySession(session)} 
+                      onClick={() => {
+                        loadHistorySession(session);
+                        if (isMobile) setMobileDrawerOpen(false);
+                      }} 
                       className={`group relative flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
                         currentSession.id === session.id 
                           ? 'bg-zinc-800 text-white font-medium shadow-sm' 
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/70'
                       }`}
                     >
-                      <span className="text-xs truncate max-w-[200px]" title={session.title}>
+                      <span className="text-xs truncate max-w-[190px]" title={session.title}>
                         {session.title || "Untitled Analysis"}
                       </span>
                       <button 
                         onClick={(e) => handleDeleteSession(e, session.id)} 
-                        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 p-1 rounded hover:bg-zinc-800 transition-all ml-1 shrink-0"
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-500 hover:text-red-400 p-1 rounded hover:bg-zinc-800 transition-all ml-1 shrink-0"
                         title="Delete log"
                       >
                         <Icons.Trash />
@@ -1192,10 +1219,9 @@ function App() {
                 )}
               </div>
             </div>
-
           </>
         ) : (
-          /* Collapsed View */
+          /* Collapsed View (Desktop) */
           <div className="flex-1 flex flex-col items-center py-4 gap-3">
             <button 
               onClick={handleNewSession} 
@@ -1222,7 +1248,7 @@ function App() {
           </div>
         )}
         
-        {!isSidebarCollapsed && (
+        {!isMobile && !isSidebarCollapsed && (
           <div 
             onMouseDown={startResizeSidebar}
             className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-zinc-600 transition-colors z-30"
@@ -1231,29 +1257,39 @@ function App() {
       </div>
 
       {/* 2. CENTER IMAGE WORKSPACE */}
-      <div className="flex-1 flex flex-col relative bg-zinc-950 overflow-hidden">
+      <div className={`${isMobile ? 'w-full h-[42dvh] shrink-0 border-b border-zinc-800/80' : 'flex-1'} flex flex-col relative bg-zinc-950 overflow-hidden`}>
         {/* Header with Dimensions and Controls */}
-        <div className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 z-10 shrink-0">
+        <div className="min-h-12 md:h-14 py-1.5 md:py-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 px-3 md:px-6 z-20 shrink-0">
           
-          {/* PRESERVED INPUT DIMENSIONS */}
-          <div className="flex items-center gap-3">
+          {/* PRESERVED INPUT DIMENSIONS + MOBILE MENU BUTTON */}
+          <div className="flex items-center gap-2 md:gap-3">
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(true)}
+                className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-white"
+                title="Open Menu"
+              >
+                <Icons.Menu />
+              </button>
+            )}
             <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5 font-mono">
               <Icons.Dimensions />
-              <span>Input Dimensions:</span>
+              <span className="hidden sm:inline">Input Dimensions:</span>
             </div>
-            <div className="font-mono text-xs text-zinc-200 font-semibold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+            <div className="font-mono text-[11px] md:text-xs text-zinc-200 font-semibold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
               {currentSession.imageUrl ? `${currentSession.imageDims.w} x ${currentSession.imageDims.h} px` : "NO DATA"}
             </div>
           </div>
             
           {/* TOOLBAR CONTROLS & USER AUTH */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 md:gap-2.5 ml-auto">
             {currentSession.imageUrl && (
               <>
                 {/* Detections Visibility Toggle */}
                 <button
                   onClick={() => setShowDetections(!showDetections)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono transition-colors border ${
+                  className={`flex items-center gap-1 px-2 md:px-2.5 py-1 rounded-md text-[11px] md:text-xs font-mono transition-colors border ${
                     showDetections
                       ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-sm'
                       : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
@@ -1261,15 +1297,15 @@ function App() {
                   title={showDetections ? "Hide model detections overlay" : "Show model detections overlay"}
                 >
                   {showDetections ? <Icons.Eye /> : <Icons.EyeOff />}
-                  <span>{showDetections ? 'Detections: ON' : 'Detections: OFF'}</span>
+                  <span className="hidden sm:inline">{showDetections ? 'Detections: ON' : 'Detections: OFF'}</span>
                 </button>
 
-                <div className="h-4 w-[1px] bg-zinc-800"></div>
+                <div className="hidden sm:block h-4 w-[1px] bg-zinc-800"></div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 flex items-center gap-1.5 shadow-sm text-zinc-300">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-1.5 md:px-2 py-0.5 md:py-1 flex items-center gap-1 md:gap-1.5 shadow-sm text-zinc-300">
                   {isCropping ? (
                     <>
-                      <span className="text-xs text-zinc-200 font-mono uppercase px-1 animate-pulse">Select Area</span>
+                      <span className="text-[10px] md:text-xs text-zinc-200 font-mono uppercase px-1 animate-pulse">Crop</span>
                       <div className="w-[1px] h-4 bg-zinc-800"></div>
                       <button onClick={performCrop} disabled={!selection} className="text-zinc-100 hover:text-white p-1 disabled:opacity-30" title="Apply Crop">
                         <Icons.Check />
@@ -1298,14 +1334,14 @@ function App() {
                       <button onClick={activateCropMode} className="hover:text-white p-1 transition-colors" title="Crop Tool">
                         <Icons.Crop />
                       </button>
-                      <div className="w-[1px] h-4 bg-zinc-800"></div>
-                      <button onClick={() => handleZoom(0.2)} className="hover:text-white p-1 transition-colors" title="Zoom In">
+                      <div className="hidden sm:block w-[1px] h-4 bg-zinc-800"></div>
+                      <button onClick={() => handleZoom(0.2)} className="hidden sm:block hover:text-white p-1 transition-colors" title="Zoom In">
                         <Icons.ZoomIn />
                       </button>
-                      <button onClick={() => handleZoom(-0.2)} className="hover:text-white p-1 transition-colors" title="Zoom Out">
+                      <button onClick={() => handleZoom(-0.2)} className="hidden sm:block hover:text-white p-1 transition-colors" title="Zoom Out">
                         <Icons.ZoomOut />
                       </button>
-                      <button onClick={handleResetTransform} className="text-[10px] font-mono hover:text-white px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors ml-1" title="Reset View">
+                      <button onClick={handleResetTransform} className="text-[10px] font-mono hover:text-white px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors ml-0.5" title="Reset View">
                         Reset
                       </button>
                     </>
@@ -1321,7 +1357,7 @@ function App() {
               <button
                 type="button"
                 onClick={() => setShowAuthModal(true)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs px-3 py-1.5 rounded-lg border border-zinc-700 flex items-center gap-1.5 font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg border border-zinc-700 flex items-center gap-1.5 font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
               >
                 <Icons.User />
                 <span>Sign In</span>
@@ -1331,12 +1367,12 @@ function App() {
                 <button
                   type="button"
                   onClick={() => setShowUserDropdown(!showUserDropdown)}
-                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-2.5 py-1 rounded-lg border border-zinc-800 flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs px-2 md:px-2.5 py-1 rounded-lg border border-zinc-800 flex items-center gap-1.5 md:gap-2 transition-all cursor-pointer shadow-sm"
                 >
                   <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-zinc-700 to-zinc-600 flex items-center justify-center text-[10px] font-bold text-white font-mono">
                     {(currentUser.full_name || currentUser.username || 'U')[0].toUpperCase()}
                   </div>
-                  <span className="max-w-[100px] truncate font-medium">
+                  <span className="max-w-[72px] md:max-w-[100px] truncate font-medium">
                     {currentUser.full_name || currentUser.username}
                   </span>
                   <Icons.ChevronDown />
@@ -1383,10 +1419,10 @@ function App() {
         </div>
 
         {/* Canvas & Gallery Container */}
-        <div className="flex-1 flex flex-col relative overflow-hidden">
+        <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
           {/* Main Image Stage */}
           <div 
-            className="flex-1 flex items-center justify-center p-8 relative overflow-hidden bg-zinc-950" 
+            className="flex-1 flex items-center justify-center p-3 md:p-8 relative overflow-hidden bg-zinc-950 min-h-0" 
             onMouseDown={handleMouseDown} 
             onMouseMove={handleMouseMove} 
             onMouseUp={handleMouseUp} 
@@ -1404,7 +1440,7 @@ function App() {
                     crossOrigin="anonymous" 
                     alt="Satellite imagery" 
                     onLoad={(e) => setCurrentSession(prev => ({...prev, imageDims: { w: e.target.naturalWidth, h: e.target.naturalHeight }}))} 
-                    className="max-h-[66vh] max-w-full w-auto h-auto object-contain rounded-lg shadow-xl select-none pointer-events-none border border-zinc-800" 
+                    className="max-h-[28dvh] md:max-h-[66vh] max-w-full w-auto h-auto object-contain rounded-lg shadow-xl select-none pointer-events-none border border-zinc-800" 
                   />
                 </div>
                 {isCropping && selection && (
@@ -1420,16 +1456,16 @@ function App() {
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} 
                 onDragLeave={() => setIsDragging(false)} 
                 onDrop={(e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); }} 
-                className={`w-[480px] h-[300px] border border-dashed rounded-2xl flex flex-col items-center justify-center transition-all duration-200 group cursor-pointer relative overflow-hidden ${
+                className={`w-full max-w-[480px] h-full max-h-[210px] md:max-h-[300px] md:h-[300px] p-4 border border-dashed rounded-2xl flex flex-col items-center justify-center transition-all duration-200 group cursor-pointer relative overflow-hidden ${
                   isDragging ? 'border-zinc-400 bg-zinc-900' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/60 hover:bg-zinc-900/40'
                 }`} 
                 onClick={() => fileInputRef.current?.click()}
               >
-                <div className="p-4 bg-zinc-900 rounded-full mb-3 border border-zinc-800 group-hover:scale-105 transition-transform">
+                <div className="p-3 md:p-4 bg-zinc-900 rounded-full mb-2 md:mb-3 border border-zinc-800 group-hover:scale-105 transition-transform">
                   <div className="text-zinc-200"><Icons.Upload /></div>
                 </div>
-                <h3 className="text-sm font-semibold text-zinc-200 mb-1">Upload Satellite Imagery</h3>
-                <p className="text-xs text-zinc-400 text-center max-w-xs mb-3">
+                <h3 className="text-xs md:text-sm font-semibold text-zinc-200 mb-1">Upload Satellite Imagery</h3>
+                <p className="text-[11px] md:text-xs text-zinc-400 text-center max-w-xs mb-2 md:mb-3">
                   Drag and drop files photos 
                 </p>
                 <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800">
@@ -1442,16 +1478,18 @@ function App() {
           {/* Bottom Image Gallery */}
           {currentSession.imageUrl && currentSession.groundedImages && currentSession.groundedImages.length > 0 && (
             <>
-              <div 
-                onMouseDown={startResizeRepo}
-                className="h-3 bg-zinc-950 border-t border-b border-zinc-800 cursor-row-resize flex items-center justify-center hover:bg-zinc-800 transition-colors z-30 group"
-              >
-                <div className="h-0.5 w-12 rounded-full bg-zinc-700 group-hover:bg-zinc-400 transition-colors"></div>
-              </div>
+              {!isMobile && (
+                <div 
+                  onMouseDown={startResizeRepo}
+                  className="h-3 bg-zinc-950 border-t border-b border-zinc-800 cursor-row-resize flex items-center justify-center hover:bg-zinc-800 transition-colors z-30 group"
+                >
+                  <div className="h-0.5 w-12 rounded-full bg-zinc-700 group-hover:bg-zinc-400 transition-colors"></div>
+                </div>
+              )}
               
-              <div style={{ height: repoPanelHeight }} className="bg-zinc-950 flex flex-col z-20 shrink-0 border-t border-zinc-800">
-                <div className="px-5 py-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 shrink-0">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+              <div style={{ height: isMobile ? 105 : repoPanelHeight }} className="bg-zinc-950 flex flex-col z-20 shrink-0 border-t border-zinc-800">
+                <div className="px-3 md:px-5 py-1.5 md:py-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 shrink-0">
+                  <div className="flex items-center gap-2 text-[11px] md:text-xs font-semibold text-zinc-300">
                     <Icons.Satellite />
                     <span>Image Gallery & Model Outputs</span>
                   </div>
@@ -1460,21 +1498,18 @@ function App() {
                   </span>
                 </div>
                 
-                <div className="flex-1 p-3 overflow-y-auto flex flex-wrap content-start gap-3 custom-scrollbar">
+                <div className="flex-1 p-2 md:p-3 overflow-x-auto md:overflow-y-auto flex flex-nowrap md:flex-wrap content-start gap-2.5 md:gap-3 custom-scrollbar">
                   {currentSession.groundedImages.map((img) => (
                     <div 
                       key={img.id} 
                       onClick={() => handleRepoClick(img)} 
-                      className="w-32 aspect-square flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden group cursor-pointer transition-all duration-200 hover:border-zinc-600 hover:-translate-y-0.5"
+                      className="w-20 md:w-32 shrink-0 aspect-square flex flex-col bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden group cursor-pointer transition-all duration-200 hover:border-zinc-600 hover:-translate-y-0.5"
                     >
                       <div className="flex-1 relative overflow-hidden bg-black/40">
                         <img src={img.url} className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity" alt=""/>
                       </div>
-                      <div className="p-1.5 shrink-0 bg-zinc-950 border-t border-zinc-800">
-                        <div className="text-[9px] font-mono font-semibold truncate text-zinc-200">{img.label}</div>
-                        <div className="text-[8px] font-mono text-zinc-400">
-                          {img.type === 'grounding' ? 'Click to zoom' : 'Click to restore'}
-                        </div>
+                      <div className="p-1 md:p-1.5 shrink-0 bg-zinc-950 border-t border-zinc-800">
+                        <div className="text-[8px] md:text-[9px] font-mono font-semibold truncate text-zinc-200">{img.label}</div>
                       </div>
                     </div>
                   ))}
@@ -1485,20 +1520,25 @@ function App() {
         </div>
       </div>
 
-      {/* Resize Handle for Chat Panel */}
-      <div 
-        onMouseDown={startResizeChat}
-        className="w-2.5 bg-zinc-950 border-l border-r border-zinc-800/80 cursor-col-resize flex items-center justify-center z-30 hover:bg-zinc-800 group transition-colors"
-      >
-        <div className="w-0.5 h-12 rounded-full bg-zinc-700 group-hover:bg-zinc-400 transition-colors"></div>
-      </div>
+      {/* Resize Handle for Chat Panel (Desktop Only) */}
+      {!isMobile && (
+        <div 
+          onMouseDown={startResizeChat}
+          className="w-2.5 bg-zinc-950 border-l border-r border-zinc-800/80 cursor-col-resize flex items-center justify-center z-30 hover:bg-zinc-800 group transition-colors"
+        >
+          <div className="w-0.5 h-12 rounded-full bg-zinc-700 group-hover:bg-zinc-400 transition-colors"></div>
+        </div>
+      )}
 
       {/* 3. RIGHT AI ASSISTANT PANEL (GeoQuery Assistant) */}
-      <div style={{ width: chatPanelWidth }} className="bg-zinc-950 flex flex-col z-20 shrink-0 border-l border-zinc-800/80">
+      <div 
+        style={{ width: isMobile ? '100%' : chatPanelWidth }} 
+        className={`${isMobile ? 'flex-1 min-h-0' : 'shrink-0 border-l border-zinc-800/80'} bg-zinc-950 flex flex-col z-10`}
+      >
         
         {/* Assistant Header */}
-        <div className="h-14 border-b border-zinc-800/80 flex items-center justify-between px-5 bg-zinc-950 shrink-0">
-          <div className="flex flex-col">
+        <div className="h-10 md:h-14 border-b border-zinc-800/80 flex items-center justify-between px-4 md:px-5 bg-zinc-950 shrink-0">
+          <div className="flex items-center md:flex-col gap-2 md:gap-0">
             <h2 className="text-xs font-semibold text-zinc-100 tracking-wide font-sans">
               GeoLens AI
             </h2>
@@ -1506,12 +1546,11 @@ function App() {
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-            <span className="text-[10px] font-mono text-zinc-400"></span>
           </div>
         </div>
 
         {/* Message Stream Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar" ref={scrollRef}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-4 md:space-y-5 custom-scrollbar" ref={scrollRef}>
           {currentSession.messages.map((msg, idx) => (
             <div 
               key={idx} 

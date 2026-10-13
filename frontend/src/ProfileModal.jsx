@@ -81,9 +81,9 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
       <div 
-        className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-md max-h-[90dvh] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
