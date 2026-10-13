@@ -3,7 +3,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AuthModal from './AuthModal';
 import ProfileModal from './ProfileModal';
-import HistoryModal from './HistoryModal';
 
 // ============================================================================
 // ASSETS & MONOCHROME ICONS
@@ -1236,7 +1235,7 @@ function App() {
         {/* Header with Dimensions and Controls */}
         <div className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 z-10 shrink-0">
           
-          {/* PRESERVED INPUT DIMENSIONS & CLOUD SYNC STATUS */}
+          {/* PRESERVED INPUT DIMENSIONS */}
           <div className="flex items-center gap-3">
             <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5 font-mono">
               <Icons.Dimensions />
@@ -1245,19 +1244,8 @@ function App() {
             <div className="font-mono text-xs text-zinc-200 font-semibold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
               {currentSession.imageUrl ? `${currentSession.imageDims.w} x ${currentSession.imageDims.h} px` : "NO DATA"}
             </div>
-
-            {/* Cloud Sync Status Badge */}
-            <button 
-              type="button"
-              onClick={() => setShowHistoryModal(true)}
-              className="text-[11px] font-mono flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-              title="Saved Satellite Analyses"
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500'}`}></span>
-              <span>Cloud Sync</span>
-            </button>
           </div>
-           
+            
           {/* TOOLBAR CONTROLS & USER AUTH */}
           <div className="flex items-center gap-2.5">
             {currentSession.imageUrl && (
@@ -1375,15 +1363,6 @@ function App() {
                     >
                       <Icons.User />
                       <span>My Profile</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => { setShowUserDropdown(false); setShowHistoryModal(true); }}
-                      className="w-full text-left px-3 py-2 hover:bg-zinc-800 text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <Icons.History />
-                      <span>Cloud History</span>
                     </button>
 
                     <div className="h-[1px] bg-zinc-800 my-1"></div>
@@ -1789,15 +1768,6 @@ function App() {
         onLogout={handleLogout}
         API_URL={apiUrl}
         authToken={authToken}
-      />
-
-      {/* Satellite Analysis History Modal */}
-      <HistoryModal
-        isOpen={showHistoryModal}
-        onClose={() => setShowHistoryModal(false)}
-        API_URL={apiUrl}
-        authToken={authToken}
-        onLoadAnalysis={handleLoadAnalysis}
       />
     </div>
   );

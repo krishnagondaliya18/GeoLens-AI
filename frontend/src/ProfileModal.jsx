@@ -156,13 +156,6 @@ const ProfileModal = ({ isOpen, onClose, user, onUpdateUser, onLogout, API_URL, 
                   {user.bio || 'Satellite Imagery & Geospatial Intelligence Explorer'}
                 </p>
               </div>
-              <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
-                <span>Account Status:</span>
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Active & Synced
-                </span>
-              </div>
             </div>
           ) : (
             <form onSubmit={handleSave} className="space-y-3.5">

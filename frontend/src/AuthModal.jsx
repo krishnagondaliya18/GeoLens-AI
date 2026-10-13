@@ -381,12 +381,6 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess, API_URL, isCompulsory = fal
               </button>
             </form>
           )}
-
-          {/* Database Notice */}
-          <div className="mt-5 pt-3 border-t border-zinc-800/80 flex items-center justify-center gap-1.5 text-[10px] text-zinc-500 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Secure Cloud Session</span>
-          </div>
         </div>
       </div>
     </div>
