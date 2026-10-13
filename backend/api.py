@@ -49,8 +49,11 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close MongoDB connection gracefully."""
+    """Close MongoDB connection and shared HTTP client gracefully."""
     await database.close_db()
+    global _shared_http_client
+    if _shared_http_client and not _shared_http_client.is_closed:
+        await _shared_http_client.aclose()
 
 # Add CORS middleware
 app.add_middleware(
@@ -110,6 +113,44 @@ ROUTER_TIMEOUT = 120.0
 CAPTION_TIMEOUT = 120.0
 GROUND_TIMEOUT = 120.0
 DEFAULT_VQA_TIMEOUT = 120.0
+
+# ---------------------------------------------------------------------------
+# High-Concurrency Connection Pooling, Concurrency Semaphore & Memory Guard
+# ---------------------------------------------------------------------------
+_shared_http_client: Optional[httpx.AsyncClient] = None
+
+def get_shared_http_client() -> httpx.AsyncClient:
+    global _shared_http_client
+    if _shared_http_client is None or _shared_http_client.is_closed:
+        _shared_http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            limits=httpx.Limits(max_keepalive_connections=50, max_connections=200),
+            follow_redirects=True
+        )
+    return _shared_http_client
+
+# Concurrency throttle to protect Render memory (512MB RAM) and prevent CPU spikes
+PROCESSING_SEMAPHORE = asyncio.Semaphore(25)
+
+# Fast In-Memory TTL Response Cache for identical/rapid repetitive queries
+_query_cache: Dict[str, tuple[float, Any]] = {}
+CACHE_TTL_SECONDS = 300
+
+def get_cached_result(cache_key: str) -> Optional[Any]:
+    if cache_key in _query_cache:
+        timestamp, result = _query_cache[cache_key]
+        if time.time() - timestamp < CACHE_TTL_SECONDS:
+            return result
+        else:
+            del _query_cache[cache_key]
+    return None
+
+def set_cached_result(cache_key: str, result: Any):
+    if len(_query_cache) > 400:
+        oldest = sorted(_query_cache.keys(), key=lambda k: _query_cache[k][0])[:80]
+        for k in oldest:
+            _query_cache.pop(k, None)
+    _query_cache[cache_key] = (time.time(), result)
 
 # ---------------------------------------------------------------------------
 # Image Processing & Bounding Box Utilities
@@ -700,10 +741,10 @@ async def call_gemini_vision(
         models_to_try.insert(0, active_model)
 
     last_error = ""
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        for m in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
-            try:
+    client = get_shared_http_client()
+    for m in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
+        try:
                 resp = await client.post(url, json=body)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -760,29 +801,29 @@ async def call_huggingface_vision(
         "max_tokens": 1024
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        try:
-            resp = await client.post(chat_url, json=payload, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                choices = data.get("choices", [])
-                if choices:
-                    return choices[0].get("message", {}).get("content", "")
-        except Exception:
-            pass
+    client = get_shared_http_client()
+    try:
+        resp = await client.post(chat_url, json=payload, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+    except Exception:
+        pass
 
-        # Format 2: Direct Hugging Face Inference raw image endpoint
-        try:
-            raw_url = f"https://api-inference.huggingface.co/models/{target_model}"
-            raw_headers = {"Content-Type": "image/jpeg", **headers}
-            resp2 = await client.post(raw_url, content=image_bytes, headers=raw_headers)
-            if resp2.status_code == 200:
-                data2 = resp2.json()
-                if isinstance(data2, list) and len(data2) > 0 and "generated_text" in data2[0]:
-                    return data2[0]["generated_text"]
-                return str(data2)
-        except Exception as e:
-            raise RuntimeError(f"Hugging Face API failed: {str(e)}")
+    # Format 2: Direct Hugging Face Inference raw image endpoint
+    try:
+        raw_url = f"https://api-inference.huggingface.co/models/{target_model}"
+        raw_headers = {"Content-Type": "image/jpeg", **headers}
+        resp2 = await client.post(raw_url, content=image_bytes, headers=raw_headers)
+        if resp2.status_code == 200:
+            data2 = resp2.json()
+            if isinstance(data2, list) and len(data2) > 0 and "generated_text" in data2[0]:
+                return data2[0]["generated_text"]
+            return str(data2)
+    except Exception as e:
+        raise RuntimeError(f"Hugging Face API failed: {str(e)}")
 
     raise RuntimeError("Hugging Face model response unavailable")
 
@@ -1330,14 +1371,22 @@ async def handle_query(
             if raw_image_bytes and len(raw_image_bytes) > 0:
                 compressed_image_bytes, _ = compress_image(raw_image_bytes)
 
-        route_type, result = await execute_query_multiengine(
-            compressed_image_bytes,
-            prompt,
-            api_key=api_key,
-            model=model,
-            engine=engine,
-            context=context
-        )
+        cache_key = f"{prompt.strip().lower()}|{model or ''}|{engine or ''}|{len(compressed_image_bytes) if compressed_image_bytes else 0}"
+        cached_entry = get_cached_result(cache_key)
+
+        if cached_entry:
+            route_type, result = cached_entry
+        else:
+            async with PROCESSING_SEMAPHORE:
+                route_type, result = await execute_query_multiengine(
+                    compressed_image_bytes,
+                    prompt,
+                    api_key=api_key,
+                    model=model,
+                    engine=engine,
+                    context=context
+                )
+            set_cached_result(cache_key, (route_type, result))
 
         # Persist to MongoDB Atlas
         try:
@@ -1413,23 +1462,32 @@ async def handle_query_stream(
             route_type = route_task_from_prompt(prompt)
             yield f"data: {json.dumps({'event': 'start', 'routed_to': route_type})}\n\n"
 
-            # Execute query via multiengine pipeline
-            try:
-                actual_route, result = await execute_query_multiengine(
-                    compressed_image_bytes,
-                    prompt,
-                    api_key=api_key,
-                    model=model,
-                    engine=engine,
-                    context=context
-                )
-            except Exception as pipeline_err:
-                # Resilient fallback
-                if compressed_image_bytes and len(compressed_image_bytes) > 0:
-                    result = autonomous_satellite_analyzer(compressed_image_bytes, prompt, route_type)
-                else:
-                    result = autonomous_text_response(prompt, context)
-                actual_route = route_type
+            # Check fast in-memory response cache
+            cache_key = f"{prompt.strip().lower()}|{model or ''}|{engine or ''}|{len(compressed_image_bytes) if compressed_image_bytes else 0}"
+            cached_entry = get_cached_result(cache_key)
+
+            if cached_entry:
+                actual_route, result = cached_entry
+            else:
+                # Execute query via multiengine pipeline under concurrency guard
+                try:
+                    async with PROCESSING_SEMAPHORE:
+                        actual_route, result = await execute_query_multiengine(
+                            compressed_image_bytes,
+                            prompt,
+                            api_key=api_key,
+                            model=model,
+                            engine=engine,
+                            context=context
+                        )
+                    set_cached_result(cache_key, (actual_route, result))
+                except Exception as pipeline_err:
+                    # Resilient fallback
+                    if compressed_image_bytes and len(compressed_image_bytes) > 0:
+                        result = autonomous_satellite_analyzer(compressed_image_bytes, prompt, route_type)
+                    else:
+                        result = autonomous_text_response(prompt, context)
+                    actual_route = route_type
 
             full_answer = result.get("answer", "") or result.get("caption", "Analysis complete.")
             thinking = result.get("thinking")

@@ -395,14 +395,32 @@ function App() {
     }
   }, [apiUrl]);
 
+  // Safe Storage helper with quota protection and fallback for mobile private mode
+  const safeStorageSet = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn("Storage quota warning or private mode fallback", e);
+      try {
+        if (key === 'geolens_sessions') {
+          const parsed = JSON.parse(value);
+          // Strip heavy image payloads from older history sessions to stay under quota
+          const pruned = parsed.slice(0, 8).map((s, idx) => {
+            if (idx > 0 && s.imageUrl && s.imageUrl.length > 2000) {
+              return { ...s, imageUrl: null };
+            }
+            return s;
+          });
+          localStorage.setItem('geolens_sessions', JSON.stringify(pruned));
+        }
+      } catch (_) {}
+    }
+  };
+
   // Sync helper: keeps current session persistent and updates history list in-place
   const syncSessionToHistory = (updatedSession) => {
     if (!updatedSession || !updatedSession.id) return;
-    try {
-      localStorage.setItem('geolens_current_session', JSON.stringify(updatedSession));
-    } catch (e) {
-      console.warn("Storage warning", e);
-    }
+    safeStorageSet('geolens_current_session', JSON.stringify(updatedSession));
     setSessions(prev => {
       const idx = prev.findIndex(s => s.id === updatedSession.id);
       let updated;
@@ -417,9 +435,7 @@ function App() {
           updated = prev;
         }
       }
-      try {
-        localStorage.setItem('geolens_sessions', JSON.stringify(updated));
-      } catch (e) {}
+      safeStorageSet('geolens_sessions', JSON.stringify(updated));
       return updated;
     });
   };
@@ -427,9 +443,7 @@ function App() {
   // Keep active session saved to storage whenever it updates
   useEffect(() => {
     if (currentSession && currentSession.id) {
-      try {
-        localStorage.setItem('geolens_current_session', JSON.stringify(currentSession));
-      } catch (e) {}
+      safeStorageSet('geolens_current_session', JSON.stringify(currentSession));
     }
   }, [currentSession]);
 
@@ -444,8 +458,9 @@ function App() {
   const startResizeMobileSplit = useCallback(() => { isResizingMobileSplit.current = true; }, []);
 
   const handleResize = useCallback((e) => {
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const touch = (e.touches && e.touches.length > 0) ? e.touches[0] : null;
+    const clientX = touch ? touch.clientX : (typeof e.clientX === 'number' ? e.clientX : 0);
+    const clientY = touch ? touch.clientY : (typeof e.clientY === 'number' ? e.clientY : 0);
 
     if (isResizingChat.current) {
         const newWidth = window.innerWidth - clientX;
@@ -459,7 +474,7 @@ function App() {
         const newWidth = clientX;
         if (newWidth > 180 && newWidth < 450) setSidebarWidth(newWidth);
     }
-    if (isResizingMobileSplit.current) {
+    if (isResizingMobileSplit.current && window.innerHeight > 0) {
         const pct = Math.round((clientY / window.innerHeight) * 100);
         if (pct >= 18 && pct <= 80) setMobileImageVh(pct);
     }
@@ -1028,33 +1043,92 @@ function App() {
   const handleMouseUp = () => setDragStart(null);
 
   // --- FILE HANDLING & CLIPBOARD ---
+  const optimizeImageFile = (file) => {
+    return new Promise((resolve) => {
+      if (!file || file.type === 'image/svg+xml' || (file.size && file.size < 400 * 1024)) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => resolve({ file, url: e.target.result, dims: { w: img.width, h: img.height } });
+          img.onerror = () => resolve({ file, url: e.target.result, dims: { w: 1024, h: 1024 } });
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve({ file, url: '', dims: { w: 0, h: 0 } });
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Fast Canvas Downsampler for High-Res Mobile Camera Photos (prevents storage quota & upload lag)
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_DIM = 1600;
+          let width = img.naturalWidth || img.width;
+          let height = img.naturalHeight || img.height;
+
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+              canvas.toBlob((blob) => {
+                const optimizedFile = blob ? new File([blob], (file.name || "satellite").replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }) : file;
+                resolve({ file: optimizedFile, url: optimizedDataUrl, dims: { w: width, h: height } });
+              }, 'image/jpeg', 0.86);
+              return;
+            }
+          } catch (_) {}
+          resolve({ file, url: e.target.result, dims: { w: width, h: height } });
+        };
+        img.onerror = () => resolve({ file, url: e.target.result, dims: { w: 1024, h: 1024 } });
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve({ file, url: '', dims: { w: 0, h: 0 } });
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFile = async (file) => {
     if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = '';
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => {
-        setAttachedImage({
-          file: file,
-          url: e.target.result,
-          name: file.name || 'satellite_image.jpg',
-          dims: { w: img.width, h: img.height }
-        });
 
-        setCurrentSession(prev => ({
-          ...prev,
-          imageUrl: e.target.result,
-          imageDims: { w: img.width, h: img.height }
-        }));
+    try {
+      const optimized = await optimizeImageFile(file);
+      if (!optimized.url) return;
 
-        setTimeout(() => {
-          chatInputRef.current?.focus();
-        }, 60);
-      };
-    };
-    reader.readAsDataURL(file);
+      setAttachedImage({
+        file: optimized.file,
+        url: optimized.url,
+        name: optimized.file.name || 'satellite_image.jpg',
+        dims: optimized.dims
+      });
+
+      setCurrentSession(prev => ({
+        ...prev,
+        imageUrl: optimized.url,
+        imageDims: optimized.dims
+      }));
+
+      setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 60);
+    } catch (err) {
+      console.warn("Image optimization warning", err);
+    }
   };
 
   const processClipboardImage = (clipboardData) => {
@@ -1153,7 +1227,7 @@ function App() {
   const isTransforming = transform.rotate !== 0 || transform.flipX !== 1;
 
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] w-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-zinc-700 selection:text-white">
+    <div className="flex flex-col md:flex-row min-h-screen h-screen h-[100dvh] w-screen min-w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-zinc-700 selection:text-white">
       
       {/* Global Hidden File Input */}
       <input 
@@ -1192,7 +1266,7 @@ function App() {
       {/* MOBILE DRAWER BACKDROP */}
       {isMobile && mobileDrawerOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden" 
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden" 
           onClick={() => setMobileDrawerOpen(false)} 
         />
       )}

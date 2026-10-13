@@ -59,8 +59,13 @@ async def init_db() -> bool:
     try:
         client = motor.motor_asyncio.AsyncIOMotorClient(
             MONGODB_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
+            serverSelectionTimeoutMS=4000,
+            connectTimeoutMS=4000,
+            socketTimeoutMS=10000,
+            maxPoolSize=50,
+            minPoolSize=2,
+            maxIdleTimeMS=45000,
+            waitQueueTimeoutMS=5000,
             appname="GeoLens-AI"
         )
         db = client[MONGODB_DB_NAME]
