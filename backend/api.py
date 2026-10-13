@@ -764,26 +764,26 @@ async def call_gemini_vision(
     for m in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
         try:
-                resp = await client.post(url, json=body)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            return parts[0].get("text", "")
-                    return ""
-                else:
-                    err_msg = resp.text
-                    try:
-                        err_json = resp.json()
-                        err_msg = err_json.get("error", {}).get("message", err_msg)
-                    except Exception:
-                        pass
-                    last_error = f"Gemini {m} ({resp.status_code}): {err_msg}"
-            except Exception as e:
-                last_error = str(e)
-                continue
+            resp = await client.post(url, json=body)
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "")
+                return ""
+            else:
+                err_msg = resp.text
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("error", {}).get("message", err_msg)
+                except Exception:
+                    pass
+                last_error = f"Gemini {m} ({resp.status_code}): {err_msg}"
+        except Exception as e:
+            last_error = str(e)
+            continue
 
     raise RuntimeError(f"Gemini API communication failed: {last_error}")
 
