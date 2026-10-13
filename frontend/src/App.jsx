@@ -111,39 +111,39 @@ const extractErrorMessage = async (response) => {
 const MarkdownContent = ({ content }) => {
   if (!content) return null;
   return (
-    <div className="text-xs leading-relaxed text-zinc-200 space-y-2">
+    <div className="text-[13.5px] sm:text-[14.5px] leading-relaxed text-zinc-200 space-y-2.5">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ node, ...props }) => <h1 className="text-sm font-bold text-white mt-3 mb-1.5 border-b border-zinc-800 pb-1" {...props} />,
-          h2: ({ node, ...props }) => <h2 className="text-xs font-semibold text-white mt-2.5 mb-1" {...props} />,
-          h3: ({ node, ...props }) => <h3 className="text-xs font-semibold text-zinc-100 mt-2 mb-0.5" {...props} />,
-          h4: ({ node, ...props }) => <h4 className="text-xs font-medium text-zinc-200 mt-1 mb-0.5" {...props} />,
-          p: ({ node, ...props }) => <p className="leading-relaxed mb-2 last:mb-0 text-zinc-200" {...props} />,
-          ul: ({ node, ...props }) => <ul className="list-disc pl-5 space-y-1 my-1.5 text-zinc-300" {...props} />,
-          ol: ({ node, ...props }) => <ol className="list-decimal pl-5 space-y-1 my-1.5 text-zinc-300" {...props} />,
+          h1: ({ node, ...props }) => <h1 className="text-base sm:text-lg font-bold text-white mt-3.5 mb-2 border-b border-zinc-800 pb-1" {...props} />,
+          h2: ({ node, ...props }) => <h2 className="text-[14.5px] sm:text-base font-semibold text-white mt-3 mb-1.5" {...props} />,
+          h3: ({ node, ...props }) => <h3 className="text-[13.5px] sm:text-[14.5px] font-semibold text-zinc-100 mt-2.5 mb-1" {...props} />,
+          h4: ({ node, ...props }) => <h4 className="text-[13px] sm:text-sm font-medium text-zinc-200 mt-1.5 mb-0.5" {...props} />,
+          p: ({ node, ...props }) => <p className="leading-relaxed mb-2.5 last:mb-0 text-zinc-200" {...props} />,
+          ul: ({ node, ...props }) => <ul className="list-disc pl-5 space-y-1.5 my-2 text-zinc-300 text-[13.5px] sm:text-[14.5px]" {...props} />,
+          ol: ({ node, ...props }) => <ol className="list-decimal pl-5 space-y-1.5 my-2 text-zinc-300 text-[13.5px] sm:text-[14.5px]" {...props} />,
           li: ({ node, ...props }) => <li className="leading-relaxed" {...props} />,
           strong: ({ node, ...props }) => <strong className="font-semibold text-white" {...props} />,
           em: ({ node, ...props }) => <em className="italic text-zinc-300" {...props} />,
           code: ({ node, inline, ...props }) => inline ? (
-            <code className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded text-[11px] font-mono border border-zinc-700/60" {...props} />
+            <code className="bg-zinc-800 text-zinc-200 px-1.5 py-0.5 rounded text-xs font-mono border border-zinc-700/60" {...props} />
           ) : (
-            <pre className="my-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg overflow-x-auto text-[11px] font-mono text-zinc-300">
+            <pre className="my-2.5 p-3.5 bg-zinc-950 border border-zinc-800 rounded-lg overflow-x-auto text-xs sm:text-[13px] font-mono text-zinc-300 leading-normal">
               <code {...props} />
             </pre>
           ),
           table: ({ node, ...props }) => (
-            <div className="my-2 overflow-x-auto rounded border border-zinc-800 shadow-sm">
-              <table className="min-w-full divide-y divide-zinc-800 text-[11px]" {...props} />
+            <div className="my-2.5 overflow-x-auto rounded border border-zinc-800 shadow-sm">
+              <table className="min-w-full divide-y divide-zinc-800 text-xs sm:text-sm" {...props} />
             </div>
           ),
           thead: ({ node, ...props }) => <thead className="bg-zinc-900 text-zinc-200 font-medium" {...props} />,
           tbody: ({ node, ...props }) => <tbody className="divide-y divide-zinc-800 bg-zinc-950/60" {...props} />,
           tr: ({ node, ...props }) => <tr className="hover:bg-zinc-900/40 transition-colors" {...props} />,
-          th: ({ node, ...props }) => <th className="px-3 py-1.5 text-left font-semibold text-zinc-200 border-b border-zinc-800" {...props} />,
-          td: ({ node, ...props }) => <td className="px-3 py-1.5 text-zinc-300" {...props} />,
-          blockquote: ({ node, ...props }) => <blockquote className="border-l-2 border-zinc-500 pl-3 my-2 text-zinc-400 italic" {...props} />,
-          hr: () => <hr className="my-3 border-zinc-800" />
+          th: ({ node, ...props }) => <th className="px-3.5 py-2 text-left font-semibold text-zinc-200 border-b border-zinc-800" {...props} />,
+          td: ({ node, ...props }) => <td className="px-3.5 py-2 text-zinc-300" {...props} />,
+          blockquote: ({ node, ...props }) => <blockquote className="border-l-2 border-zinc-500 pl-3.5 my-2.5 text-zinc-400 italic" {...props} />,
+          hr: () => <hr className="my-3.5 border-zinc-800" />
         }}
       >
         {content}
@@ -1876,7 +1876,7 @@ function App() {
               </div>
 
               {/* Message Bubble */}
-              <div className={`max-w-[92%] rounded-2xl text-xs leading-relaxed ${
+              <div className={`max-w-[92%] rounded-2xl text-[13.5px] sm:text-[14.5px] leading-relaxed ${
                 msg.role === 'user' 
                   ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/60 rounded-tr-sm px-4 py-3 shadow-sm' 
                   : 'bg-zinc-900/90 text-zinc-200 border border-zinc-800 rounded-tl-sm p-4 shadow-sm w-full space-y-3'
@@ -2051,7 +2051,7 @@ function App() {
                   : "Ask Geolens"
               }
               disabled={isStreaming}
-              className="w-full bg-transparent text-zinc-100 text-xs font-sans placeholder:text-zinc-400 focus:outline-none resize-none leading-relaxed min-h-[36px] max-h-[130px] custom-scrollbar px-1 py-1"
+              className="w-full bg-transparent text-zinc-100 text-sm sm:text-[14.5px] font-sans placeholder:text-zinc-400 focus:outline-none resize-none leading-relaxed min-h-[38px] max-h-[130px] custom-scrollbar px-1.5 py-1"
             />
 
             {/* Action Row */}

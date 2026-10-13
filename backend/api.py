@@ -320,21 +320,40 @@ def _extract_count_from_text(text: str) -> str:
     return cleaned.strip() or "0"
 
 def is_user_requesting_gujarati(prompt: str) -> bool:
-    """Disabled Gujarati output per user preference; always respond in English."""
-    return False
-
-def is_user_requesting_hindi(prompt: str) -> bool:
-    """Returns True ONLY if user explicitly queries in Devanagari Hindi, romanized Hindi words, or requests Hindi."""
+    """Detects if user asks in Gujarati script or romanized Gujarati phrases."""
     if not prompt:
         return False
+    # 1. Gujarati Unicode range (\u0A80 - \u0AFF)
+    if any('\u0A80' <= c <= '\u0AFF' for c in prompt):
+        return True
+    p = prompt.lower()
+    if "gujarati" in p or "gujrati" in p:
+        return True
+    # 2. Common Romanized Gujarati cues
+    guj_words = [
+        r'\bkem\b', r'\bchhe\b', r'\bchho\b', r'\bshu\b', r'\bsu\b', r'\bkyan\b',
+        r'\bbatav\b', r'\bbatavo\b', r'\bsamjav\b', r'\bsamjavo\b', r'\bkaro\b',
+        r'\bkari\b', r'\bhase\b', r'\bketla\b', r'\bketli\b', r'\bketlo\b',
+        r'\baapo\b', r'\bkarvu\b', r'\bdekhao\b', r'\bmane\b', r'\btame\b',
+        r'\bkhabar\b', r'\bkhbr\b', r'\bvishe\b', r'\bjovo\b', r'\bkayu\b', r'\bkayo\b'
+    ]
+    return any(re.search(w, p) for w in guj_words)
+
+def is_user_requesting_hindi(prompt: str) -> bool:
+    """Detects if user asks in Devanagari Hindi or romanized Hindi phrases."""
+    if not prompt:
+        return False
+    # 1. Devanagari Unicode range (\u0900 - \u097F)
     if any('\u0900' <= c <= '\u097F' for c in prompt):
         return True
     p = prompt.lower()
     if "hindi" in p:
         return True
+    # 2. Common Romanized Hindi cues
     hin_words = [
-        r'\bhai\b', r'\bkya\b', r'\bkahan\b', r'\bbatao\b', r'\bsamjhao\b',
-        r'\baage\b', r'\bdikhao\b', r'\bkitne\b', r'\bkitna\b'
+        r'\bhai\b', r'\bhain\b', r'\bkya\b', r'\bkahan\b', r'\bbatao\b', r'\bbataiye\b',
+        r'\bsamjhao\b', r'\baage\b', r'\bdikhao\b', r'\bkitne\b', r'\bkitna\b', r'\bkitni\b',
+        r'\bkaise\b', r'\bkaisa\b', r'\bkaisi\b', r'\byeh\b', r'\bwoh\b', r'\bhoga\b', r'\bhogi\b'
     ]
     return any(re.search(w, p) for w in hin_words)
 
@@ -867,41 +886,33 @@ def route_task_from_prompt(prompt: str) -> str:
 
     return "CAPTION"
 
-MULTILINGUAL_GEOLENS_SYSTEM_PROMPT = """You are GeoLens, an advanced Geospatial Vision-Language Analyst and Remote Sensing Scientist built to provide comprehensive, deep, and detailed satellite imagery intelligence with the conversational fluency, depth, and thoroughness of ChatGPT, Gemini, and Claude.
+MULTILINGUAL_GEOLENS_SYSTEM_PROMPT = """You are GeoLens, an advanced Geospatial Vision-Language Analyst and Remote Sensing AI built with the conversational fluency, intelligence, and adaptability of Gemini, Claude, and ChatGPT.
 
-CRITICAL LANGUAGE POLICY:
-1. DEFAULT LANGUAGE IS ENGLISH:
-   - By default, ALWAYS respond in clear, professional, thorough technical ENGLISH.
-   - ONLY respond in Gujarati (ગુજરાતી) if the user explicitly asks their question in Gujarati or explicitly requests Gujarati.
-   - ONLY respond in Hindi (हिंदी) if the user explicitly asks their question in Hindi or explicitly requests Hindi.
-   - Do NOT default to Gujarati. If the input is in English or a general analysis query, provide the entire response in English.
+1. MULTILINGUAL LANGUAGE MATCHING:
+   - Detect the language of the user's prompt automatically:
+     * If the user writes in Gujarati (whether in Gujarati script ગુજરાતી or Romanized Gujarati such as "kem chhe", "aa photo ma su chhe", "gujarati ma samjaav"), respond completely in natural, fluent, grammatically accurate Gujarati (ગુજરાતી).
+     * If the user writes in Hindi (whether in Devanagari हिंदी or Romanized Hindi such as "ye kya hai", "hindi me batao", "samjhao"), respond completely in natural, fluent Hindi (हिंदी).
+     * If the user writes in English, respond in clear, professional English.
+     * Never mix up languages unexpectedly. Mirror the user's selected language consistently.
 
-CRITICAL INSTRUCTIONS ON ANSWER DEPTH & DETAIL:
-2. DETAILED & COMPREHENSIVE MULTI-PARAGRAPH ANSWERS:
-   - NEVER give brief, rushed, or 1-2 sentence answers! The user explicitly expects rich, thorough, deep, and well-explained multi-paragraph answers.
-   - For every question or image, provide an in-depth, structured breakdown covering:
-     * 🎯 **Direct Comprehensive Answer**: Address the user's specific question with thorough explanation, context, and background.
-     * 🔍 **Key Geographic & Spectral Observations**: Explain landscape characteristics, terrain textures, topography, water bodies, elevation cues, and vegetation density in detail.
-     * 🏗️ **Structures, Infrastructure & Land Cover**: Analyze visible buildings, road networks, transportation lines, industrial zones, boundaries, or human settlements.
-     * 📊 **Environmental & Strategic Analysis**: Provide insights into land-use classification, soil/vegetation health, ecological balance, or spatial distribution.
-     * 💡 **Suggested Deep-Dive Step**: Conclude with a helpful, proactive question inviting the user to explore further (e.g. segmentation, counting, target isolation).
-   *(Note: If the user explicitly asks in Gujarati, translate the headings and analysis into natural, fluent Gujarati).*
+2. ADAPTIVE RESPONSE LENGTH & STYLE:
+   - Dynamically adapt your response format and depth according to the user's intent:
+     * BASIC & FACTUAL QUESTIONS: Give direct, accurate, natural explanations without unnecessary boilerplate or padding.
+     * FACT REQUESTS: Present crisp, interesting, bullet-pointed facts directly addressing the topic.
+     * SUMMARY & SHORT POINTS: Provide concise, high-impact bullet points when requested for summaries or short points.
+     * IN-DEPTH SATELLITE & SPATIAL QUERIES: Provide comprehensive structured analysis covering visual observations, terrain & water bodies, infrastructure, land-cover, and strategic insights.
 
-3. CONVERSATIONAL MEMORY & DYNAMIC RESPONSES:
-   - Remember the conversation flow. If the user follows up with 'yes', 'proceed', 'go deeper', 'હા', 'આગળ વધો', or a specific query, do not repeat old intros — directly provide the next deep layer of technical analysis with enhanced details.
-
-4. OBJECT GROUNDING & PHOTO BOUNDING BOXES:
-   - When asked to locate, detect, highlight, count, or show objects/regions (or when performing deep-dive spatial analysis):
-     Provide precise 0-1000 normalized bounding boxes in a JSON block:
+3. VISUAL GROUNDING & OBJECT DETECTION:
+   - When asked to locate, detect, highlight, count, or identify objects or features in the imagery:
+     Provide precise 0-1000 normalized bounding boxes in a JSON code block:
      ```json
-     [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Label Name", "reason": "Detailed visual evidence"}]
+     [{"box_2d": [ymin, xmin, ymax, xmax], "label": "Label Name", "reason": "Visual cue"}]
      ```
-     This allows SAM 3 segmentation to overlay colored masks and bounding boxes onto the satellite photo.
+     This triggers SAM 3 and Grounding DINO to overlay colored segmentation masks and bounding boxes onto the image.
 
-5. FORMATTING & PRESENTATION:
-   - Output your full, comprehensive analysis directly in clean, readable Markdown with structured bold headings, bullet points, and numbered details.
-   - Do NOT wrap your output in [THINKING] or [FINAL ANSWER] tags. Provide your complete, detailed explanation directly.
-   - Never provide a short answer. Ensure multi-paragraph depth covering visual evidence, terrain characteristics, and strategic insights.
+4. CLEAN MARKDOWN FORMATTING:
+   - Use clean, well-formatted Markdown with bold titles, readable bullet points, and clear typography.
+   - Do not output meta-tags like [THINKING] or [FINAL ANSWER]. Deliver your answer directly.
 """
 
 def autonomous_text_response(prompt: str, context: Optional[str] = None) -> Dict[str, Any]:
@@ -1108,17 +1119,27 @@ async def execute_query_multiengine(
             if context and context.strip():
                 effective_prompt = f"Previous Conversation History:\n{context.strip()}\n\nUser Question:\n{effective_prompt}"
 
-            # Ensure detailed and thorough long answer with strict language matching
+            # Ensure adaptive answering with strict language matching
             is_guj = is_user_requesting_gujarati(prompt)
             is_hin = is_user_requesting_hindi(prompt)
             if is_guj:
-                lang_rule = "Respond entirely in natural, fluent Gujarati (ગુજરાતી)."
+                lang_rule = "Respond entirely in natural, fluent, grammatically accurate Gujarati (ગુજરાતી)."
             elif is_hin:
-                lang_rule = "Respond entirely in Hindi (हिंदी)."
+                lang_rule = "Respond entirely in natural, fluent Hindi (हिंदी)."
             else:
-                lang_rule = "Respond entirely in clear, professional English. Do not use Gujarati unless explicitly asked."
+                lang_rule = "Respond in clear, professional English."
 
-            effective_prompt = f"{effective_prompt}\n\n[Instruction: Provide a thorough, comprehensive, multi-paragraph in-depth answer with structured markdown observations, terrain details, infrastructure analysis, and clear reasoning. Do not give a short answer. Language Requirement: {lang_rule}]"
+            p_low = prompt.lower()
+            if any(w in p_low for w in ["fact", "facts", "hakeekat", "tathya"]):
+                style_rule = "Format as crisp, interesting, bullet-pointed facts answering the user."
+            elif any(w in p_low for w in ["summary", "summarize", "short", "brief", "points", "point", "tunk", "short ma", "sankshep"]):
+                style_rule = "Format as a concise, direct bullet-point summary without unnecessary filler."
+            elif any(w in p_low for w in ["what is", "who is", "define", "explain simply", "su chhe", "shu chhe", "kya hai", "basic", "simple"]):
+                style_rule = "Provide a direct, clear, conversational explanation."
+            else:
+                style_rule = "Provide a well-structured, insightful response tailored to the visual and geospatial context."
+
+            effective_prompt = f"{effective_prompt}\n\n[Behavior Directive: {style_rule} Language Requirement: {lang_rule}]"
 
             raw = await call_gemini_vision(
                 effective_prompt,
