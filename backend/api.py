@@ -279,22 +279,8 @@ def _extract_count_from_text(text: str) -> str:
     return cleaned.strip() or "0"
 
 def is_user_requesting_gujarati(prompt: str) -> bool:
-    """Returns True ONLY if user explicitly queries in Gujarati script, romanized Gujarati words, or requests Gujarati."""
-    if not prompt:
-        return False
-    # Gujarati Unicode script (અ, આ, ઇ...)
-    if any('\u0A80' <= c <= '\u0AFF' for c in prompt):
-        return True
-    p = prompt.lower()
-    if "gujarati" in p or "gujrati" in p:
-        return True
-    # Specific whole-word Romanized Gujarati vocabulary
-    guj_words = [
-        r'\bchhe\b', r'\bshu\b', r'\bkyan\b', r'\bkem\b', r'\bbatavo\b', r'\bbatav\b',
-        r'\bsamjavo\b', r'\bsamjav\b', r'\bjanavo\b', r'\baagal\b', r'\bvadho\b',
-        r'\bkaro\b', r'\baapo\b', r'\bketla\b', r'\bketli\b', r'\bmakan\b', r'\brasto\b'
-    ]
-    return any(re.search(w, p) for w in guj_words)
+    """Disabled Gujarati output per user preference; always respond in English."""
+    return False
 
 def is_user_requesting_hindi(prompt: str) -> bool:
     """Returns True ONLY if user explicitly queries in Devanagari Hindi, romanized Hindi words, or requests Hindi."""

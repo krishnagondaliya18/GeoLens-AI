@@ -790,7 +790,7 @@ function App() {
       return;
     }
     if (!input.trim() && !attachedImage) return;
-    const userText = input.trim() || (attachedImage ? "આ સેટેલાઇટ ફોટાનું વિગતવાર વિશ્લેષણ કરો અને મુખ્ય બાબતો જણાવો." : "");
+    const userText = input.trim() || (attachedImage ? "Analyze this satellite image in detail and highlight the key features." : "");
     const stagedImg = attachedImage;
     setInput('');
     setAttachedImage(null);
@@ -1738,7 +1738,7 @@ function App() {
               onPaste={handleChatPaste}
               placeholder={
                 attachedImage 
-                  ? "આ ફોટા વિશે શું જાણવું છે? પૂછો... / Ask what to analyze in this photo..." 
+                  ? "Ask Geolens" 
                   : "Ask Geolens"
               }
               disabled={isStreaming}
